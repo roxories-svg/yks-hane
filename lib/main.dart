@@ -209,8 +209,6 @@ class _AnaSayfaState extends State<AnaSayfa> {
   bool _basvuruYapildi = false;
 
   final String _adminUID = "Wbs67Nmf43gLQlf9U6n8Ju0xyJE3";
-
-  // roxories@gmail.com veya her durumda doğrudan admin yetkisi
   bool get _isAdmin => true;
 
   final Color _anaTemaMavi = const Color(0xFF00F0FF);
@@ -947,146 +945,132 @@ class _AnaSayfaState extends State<AnaSayfa> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Row(
-          children: [
-            InkWell(
-              onTap: _profilDuzenleDialog,
-              borderRadius: BorderRadius.circular(12),
-              child: Row(
+        title: InkWell(
+          onTap: _profilDuzenleDialog,
+          borderRadius: BorderRadius.circular(12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircleAvatar(
+                radius: 18,
+                backgroundColor: _anaTemaMavi,
+                backgroundImage: _profilResimBase64 != null
+                    ? MemoryImage(base64Decode(_profilResimBase64!))
+                    : null,
+                child: _profilResimBase64 == null
+                    ? CircleAvatar(
+                        radius: 16,
+                        backgroundColor: widget.isDarkMode
+                            ? const Color(0xFF0F172A)
+                            : Colors.grey[200],
+                        child:
+                            Icon(Icons.person, color: _anaTemaMavi, size: 18),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 8),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: _anaTemaMavi,
-                    backgroundImage: _profilResimBase64 != null
-                        ? MemoryImage(base64Decode(_profilResimBase64!))
-                        : null,
-                    child: _profilResimBase64 == null
-                        ? CircleAvatar(
-                            radius: 16,
-                            backgroundColor: widget.isDarkMode
-                                ? const Color(0xFF0F172A)
-                                : Colors.grey[200],
-                            child: Icon(Icons.person,
-                                color: _anaTemaMavi, size: 18),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 8),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Text(
-                            _kullaniciAdi,
-                            style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.bold,
-                                color: widget.isDarkMode
-                                    ? Colors.white
-                                    : Colors.black87),
-                          ),
-                          if (_isPremium || _isAdmin) ...[
-                            const SizedBox(width: 4),
-                            Icon(Icons.workspace_premium,
-                                color: _premiumAltin, size: 14),
-                          ],
-                        ],
-                      ),
                       Text(
-                        _isAdmin
-                            ? "SİSTEM YÖNETİCİSİ 👑"
-                            : _isPremium
-                                ? "PREMIUM ÜYE 👑"
-                                : _basvuruYapildi
-                                    ? "BAŞVURU BEKLEMEDE ⏳"
-                                    : _aktifKullanici != null
-                                        ? "Bulut Senkronize"
-                                        : "YKS 1.Sİ",
+                        _kullaniciAdi,
                         style: TextStyle(
-                            fontSize: 9,
-                            color: (_isPremium || _isAdmin)
-                                ? _premiumAltin
-                                : _anaTemaMavi,
-                            fontWeight: FontWeight.bold),
+                            fontSize: 13,
+                            fontWeight: FontWeight.bold,
+                            color: widget.isDarkMode
+                                ? Colors.white
+                                : Colors.black87),
                       ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.workspace_premium,
+                          color: _premiumAltin, size: 14),
                     ],
+                  ),
+                  const Text(
+                    "SİSTEM YÖNETİCİSİ 👑",
+                    style: TextStyle(
+                        fontSize: 9,
+                        color: Color(0xFFFFD700),
+                        fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
-            ),
-            const Spacer(),
-            // GARANTİ ADMIN BUTONU (KESİNLİKLE GÖRÜNECEK)
-            InkWell(
-              onTap: _adminPaneliAc,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
-                  ),
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFA855F7).withOpacity(0.5),
-                      blurRadius: 8,
-                    )
-                  ],
-                ),
-                child: Row(
-                  children: const [
-                    Icon(Icons.admin_panel_settings,
-                        color: Colors.white, size: 16),
-                    SizedBox(width: 4),
-                    Text(
-                      "ADMIN PANELİ",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            if (kIsWeb) ...[
-              InkWell(
-                onTap: _apkIndir,
-                borderRadius: BorderRadius.circular(12),
+            ],
+          ),
+        ),
+        actions: [
+          // GARANTİ ADMIN BUTONU (ACTIONS ALANINDA - TAŞMA YAPMAZ)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+              child: InkWell(
+                onTap: _adminPaneliAc,
+                borderRadius: BorderRadius.circular(10),
                 child: Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF10B981).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: const Color(0xFF10B981), width: 1.2),
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Row(
                     children: const [
-                      Icon(Icons.android, color: Color(0xFF10B981), size: 15),
-                      SizedBox(width: 4),
+                      Icon(Icons.admin_panel_settings,
+                          color: Colors.white, size: 14),
+                      SizedBox(width: 2),
                       Text(
-                        "Mobil İndir",
+                        "ADMIN",
                         style: TextStyle(
-                          color: Color(0xFF10B981),
+                          color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          fontSize: 11,
+                          fontSize: 10,
                         ),
                       ),
                     ],
                   ),
                 ),
               ),
-            ],
-          ],
-        ),
-        actions: [
+            ),
+          ),
+          if (kIsWeb)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: InkWell(
+                  onTap: _apkIndir,
+                  borderRadius: BorderRadius.circular(10),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFF10B981).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(10),
+                      border:
+                          Border.all(color: const Color(0xFF10B981), width: 1),
+                    ),
+                    child: Row(
+                      children: const [
+                        Icon(Icons.android, color: Color(0xFF10B981), size: 14),
+                        SizedBox(width: 2),
+                        Text(
+                          "APK",
+                          style: TextStyle(
+                            color: Color(0xFF10B981),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           IconButton(
             icon: Icon(Icons.share_outlined, color: _anaTemaMavi, size: 20),
             onPressed: _paylasimEkraniAc,
