@@ -210,7 +210,6 @@ class _AnaSayfaState extends State<AnaSayfa> {
 
   final String _adminUID = "Wbs67Nmf43gLQlf9U6n8Ju0xyJE3";
 
-  // Sadece sana ve yetkili e-postana özel güvenli admin kontrolü
   bool get _isAdmin =>
       (_aktifKullanici?.uid == _adminUID) ||
       (_aktifKullanici?.email == "roxories@gmail.com") ||
@@ -237,7 +236,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
     super.initState();
     _aktifKullanici = FirebaseAuth.instance.currentUser;
     if (_aktifKullanici != null) {
-      _kullaniciAdi = _aktifKullanici!.displayName ?? "Öğrenci";
+      _kullaniciAdi = _aktifKullanici!.displayName ?? (_aktifKullanici!.email?.split('@')[0] ?? "Roxories");
     }
     _verileriYukle();
     _aktifDuyurulariKontrolEt();
@@ -329,6 +328,8 @@ class _AnaSayfaState extends State<AnaSayfa> {
         _aktifKullanici = userCredential.user;
         if (_aktifKullanici?.displayName != null) {
           _kullaniciAdi = _aktifKullanici!.displayName!;
+        } else if (_aktifKullanici?.email != null) {
+          _kullaniciAdi = _aktifKullanici!.email!.split('@')[0];
         }
       });
 
@@ -1056,7 +1057,45 @@ class _AnaSayfaState extends State<AnaSayfa> {
           ),
         ),
         actions: [
-          // SADECE SENİN GÖREBİLECEĞİN GÜVENLİ ADMIN BUTONU
+          // PREMIUM BUTONU (Üst barda her zaman erişilebilir)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4.0),
+              child: InkWell(
+                onTap: _premiumModalGoster,
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        _premiumAltin.withOpacity(0.8),
+                        Colors.orangeAccent
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.workspace_premium,
+                          color: Colors.black, size: 14),
+                      const SizedBox(width: 2),
+                      Text(
+                        _isPremium ? "PRO" : "PREMIUM",
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // ADMIN BUTONU
           if (_isAdmin)
             Center(
               child: Padding(
@@ -1523,8 +1562,7 @@ class AdminPaneliSayfasi extends StatefulWidget {
 }
 
 class _AdminPaneliSayfasiState extends State<AdminPaneliSayfasi> {
-  int _adminSekme =
-      0; // 0: Öğrenciler, 1: Bekleyen Başvurular, 2: Duyuru Yayınla
+  int _adminSekme = 0;
   final TextEditingController _duyuruController = TextEditingController();
 
   Future<void> _duyuruYayinla() async {
@@ -1552,7 +1590,6 @@ class _AdminPaneliSayfasiState extends State<AdminPaneliSayfasi> {
       ),
       body: Column(
         children: [
-          // Admin Sekme Butonları
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: Row(
@@ -1633,7 +1670,6 @@ class _AdminPaneliSayfasiState extends State<AdminPaneliSayfasi> {
 
         return Column(
           children: [
-            // İstatistik Kartları Dashboard
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
@@ -1840,7 +1876,6 @@ class _AdminPaneliSayfasiState extends State<AdminPaneliSayfasi> {
                       style:
                           TextStyle(fontWeight: FontWeight.bold, fontSize: 11)),
                   onPressed: () async {
-                    // Kullanıcıyı PRO yap ve başvuru kaydını güncelle
                     await FirebaseFirestore.instance
                         .collection('kullanicilar')
                         .doc(uid)
