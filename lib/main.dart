@@ -210,7 +210,11 @@ class _AnaSayfaState extends State<AnaSayfa> {
 
   final String _adminUID = "Wbs67Nmf43gLQlf9U6n8Ju0xyJE3";
 
-  bool get _isAdmin => _aktifKullanici?.uid == _adminUID;
+  // roxories@gmail.com veya admin UID ile kesin eşleşme
+  bool get _isAdmin =>
+      _aktifKullanici?.uid == _adminUID ||
+      _aktifKullanici?.email == "roxories@gmail.com" ||
+      _aktifKullanici?.email == "hasanhuseyinserken@gmail.com";
 
   final Color _anaTemaMavi = const Color(0xFF00F0FF);
   final Color _vurguKirmizi = const Color(0xFFFF334B);
