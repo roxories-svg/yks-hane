@@ -208,6 +208,10 @@ class _AnaSayfaState extends State<AnaSayfa> {
   bool _isPremium = false;
   bool _basvuruYapildi = false;
 
+  final String _adminUID = "Wbs67Nmf43gLQlf9U6n8Ju0xyJE3";
+
+  bool get _isAdmin => _aktifKullanici?.uid == _adminUID;
+
   final Color _anaTemaMavi = const Color(0xFF00F0FF);
   final Color _vurguKirmizi = const Color(0xFFFF334B);
   final Color _premiumAltin = const Color(0xFFFFD700);
@@ -533,6 +537,15 @@ class _AnaSayfaState extends State<AnaSayfa> {
 
   Future<void> _denemeleriKaydet() async {
     await _verileriBulutaKaydet();
+  }
+
+  void _adminPaneliAc() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AdminPaneliSayfasi(isDarkMode: widget.isDarkMode),
+      ),
+    );
   }
 
   void _premiumModalGoster() {
@@ -973,7 +986,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
                                     ? Colors.white
                                     : Colors.black87),
                           ),
-                          if (_isPremium) ...[
+                          if (_isPremium || _isAdmin) ...[
                             const SizedBox(width: 4),
                             Icon(Icons.workspace_premium,
                                 color: _premiumAltin, size: 14),
@@ -981,16 +994,20 @@ class _AnaSayfaState extends State<AnaSayfa> {
                         ],
                       ),
                       Text(
-                        _isPremium
-                            ? "PREMIUM ÜYE 👑"
-                            : _basvuruYapildi
-                                ? "BAŞVURU BEKLEMEDE ⏳"
-                                : _aktifKullanici != null
-                                    ? "Bulut Senkronize"
-                                    : "YKS 1.Sİ",
+                        _isAdmin
+                            ? "SİSTEM YÖNETİCİSİ 👑"
+                            : _isPremium
+                                ? "PREMIUM ÜYE 👑"
+                                : _basvuruYapildi
+                                    ? "BAŞVURU BEKLEMEDE ⏳"
+                                    : _aktifKullanici != null
+                                        ? "Bulut Senkronize"
+                                        : "YKS 1.Sİ",
                         style: TextStyle(
                             fontSize: 9,
-                            color: _isPremium ? _premiumAltin : _anaTemaMavi,
+                            color: (_isPremium || _isAdmin)
+                                ? _premiumAltin
+                                : _anaTemaMavi,
                             fontWeight: FontWeight.bold),
                       ),
                     ],
@@ -999,38 +1016,78 @@ class _AnaSayfaState extends State<AnaSayfa> {
               ),
             ),
             const Spacer(),
-            InkWell(
-              onTap: _premiumModalGoster,
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      _premiumAltin.withOpacity(0.3),
-                      Colors.orange.withOpacity(0.3)
+            if (_isAdmin) ...[
+              InkWell(
+                onTap: _adminPaneliAc,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color(0xFFA855F7).withOpacity(0.4),
+                        blurRadius: 6,
+                      )
                     ],
                   ),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _premiumAltin, width: 1),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.auto_awesome, color: _premiumAltin, size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                      _isPremium ? "PRO" : "PREMİUM",
-                      style: TextStyle(
-                        color: _premiumAltin,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 10,
+                  child: Row(
+                    children: const [
+                      Icon(Icons.admin_panel_settings,
+                          color: Colors.white, size: 15),
+                      SizedBox(width: 4),
+                      Text(
+                        "ADMIN PANELİ",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 10,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(width: 6),
+              const SizedBox(width: 6),
+            ] else ...[
+              InkWell(
+                onTap: _premiumModalGoster,
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        _premiumAltin.withOpacity(0.3),
+                        Colors.orange.withOpacity(0.3)
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: _premiumAltin, width: 1),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.auto_awesome, color: _premiumAltin, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        _isPremium ? "PRO" : "PREMİUM",
+                        style: TextStyle(
+                          color: _premiumAltin,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 6),
+            ],
             if (kIsWeb) ...[
               InkWell(
                 onTap: _apkIndir,
@@ -1447,6 +1504,238 @@ class _AnaSayfaState extends State<AnaSayfa> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class AdminPaneliSayfasi extends StatelessWidget {
+  final bool isDarkMode;
+
+  const AdminPaneliSayfasi({super.key, required this.isDarkMode});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: isDarkMode ? const Color(0xFF030712) : Colors.white,
+      appBar: AppBar(
+        title: const Text("👑 YKS Hane Admin Paneli"),
+        backgroundColor: Colors.transparent,
+      ),
+      body: StreamBuilder<QuerySnapshot>(
+        stream:
+            FirebaseFirestore.instance.collection('kullanicilar').snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+                child: CircularProgressIndicator(color: Color(0xFFA855F7)));
+          }
+
+          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+            return const Center(
+              child: Text("Sistemde henüz kayıtlı kullanıcı yok.",
+                  style: TextStyle(color: Colors.grey)),
+            );
+          }
+
+          final kullanicilar = snapshot.data!.docs;
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: kullanicilar.length,
+            itemBuilder: (context, index) {
+              final doc = kullanicilar[index];
+              final data = doc.data() as Map<String, dynamic>;
+              final uid = doc.id;
+              final kIsim = data['kullaniciAdi'] ?? 'İsimsiz Öğrenci';
+              final isPro = data['isPremium'] ?? false;
+              final basvuruVar = data['basvuruYapildi'] ?? false;
+
+              final List sorularData = data['sorular'] ?? [];
+              final List denemelerData = data['denemeler'] ?? [];
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F172A),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                      color: isPro
+                          ? const Color(0xFFFFD700)
+                          : basvuruVar
+                              ? Colors.orange
+                              : const Color(0xFFA855F7).withOpacity(0.4)),
+                ),
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: const Color(0xFFA855F7),
+                    backgroundImage: data['profilResimBase64'] != null
+                        ? MemoryImage(base64Decode(data['profilResimBase64']))
+                        : null,
+                    child: data['profilResimBase64'] == null
+                        ? Text(kIsim.isNotEmpty ? kIsim[0].toUpperCase() : "Ö",
+                            style: const TextStyle(color: Colors.white))
+                        : null,
+                  ),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(kIsim,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold)),
+                      ),
+                      if (isPro) ...[
+                        const Icon(Icons.workspace_premium,
+                            color: Color(0xFFFFD700), size: 16),
+                      ],
+                    ],
+                  ),
+                  subtitle: Text(
+                    "Soru Sayısı: ${sorularData.length} | Deneme: ${denemelerData.length}\n"
+                    "Durum: ${isPro ? 'PRO ÜYE 👑' : basvuruVar ? 'BAŞVURU YAPTI ⏳' : 'Ücretsiz Üye'}",
+                    style: const TextStyle(color: Colors.grey, fontSize: 11),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          isPro ? Icons.star : Icons.star_border,
+                          color: isPro ? const Color(0xFFFFD700) : Colors.grey,
+                        ),
+                        tooltip: isPro ? "Pro'yu Kaldır" : "Pro Yap",
+                        onPressed: () async {
+                          await FirebaseFirestore.instance
+                              .collection('kullanicilar')
+                              .doc(uid)
+                              .update({'isPremium': !isPro});
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.chevron_right,
+                            color: Color(0xFF00F0FF)),
+                        tooltip: "Defterini İncele",
+                        onPressed: () {
+                          final ogrenciSorulari = sorularData
+                              .map((e) =>
+                                  SoruModel.fromJson(e as Map<String, dynamic>))
+                              .toList();
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => OgrenciSoruIncelemeSayfasi(
+                                kullaniciAdi: kIsim,
+                                sorular: ogrenciSorulari,
+                                isDarkMode: isDarkMode,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+class OgrenciSoruIncelemeSayfasi extends StatelessWidget {
+  final String kullaniciAdi;
+  final List<SoruModel> sorular;
+  final bool isDarkMode;
+
+  const OgrenciSoruIncelemeSayfasi({
+    super.key,
+    required this.kullaniciAdi,
+    required this.sorular,
+    required this.isDarkMode,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: isDarkMode ? const Color(0xFF030712) : Colors.white,
+      appBar: AppBar(
+        title: Text("$kullaniciAdi'nin Yanlış Defteri"),
+        backgroundColor: Colors.transparent,
+      ),
+      body: sorular.isEmpty
+          ? const Center(
+              child: Text("Bu öğrenci henüz soru yüklememiş.",
+                  style: TextStyle(color: Colors.grey)),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: sorular.length,
+              itemBuilder: (context, index) {
+                final s = sorular[index];
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF0F172A),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: const Color(0xFF00F0FF).withOpacity(0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text("${s.ders} - ${s.konu}",
+                              style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFF00F0FF))),
+                          Text(s.cozuldu ? "Çözüldü ✅" : "Bekliyor ⏳",
+                              style: TextStyle(
+                                  color:
+                                      s.cozuldu ? Colors.green : Colors.orange,
+                                  fontSize: 12)),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      GestureDetector(
+                        onTap: () => _tamEkranResimGoster(
+                            context, s.soruResimBase64, "${s.ders} - Soru"),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: Image.memory(
+                            base64Decode(s.soruResimBase64),
+                            height: 200,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      if (s.cozumResimBase64 != null) ...[
+                        const SizedBox(height: 10),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFFFFD700),
+                            side: BorderSide(
+                                color:
+                                    const Color(0xFFFFD700).withOpacity(0.5)),
+                          ),
+                          icon: const Icon(Icons.lightbulb, size: 18),
+                          label: const Text("Öğrencinin Eklediği Çözümü Gör"),
+                          onPressed: () => _tamEkranResimGoster(context,
+                              s.cozumResimBase64!, "${s.ders} - Çözüm"),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              },
+            ),
     );
   }
 }
