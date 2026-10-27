@@ -210,11 +210,8 @@ class _AnaSayfaState extends State<AnaSayfa> {
 
   final String _adminUID = "Wbs67Nmf43gLQlf9U6n8Ju0xyJE3";
 
-  // roxories@gmail.com veya admin UID ile kesin eşleşme
-  bool get _isAdmin =>
-      _aktifKullanici?.uid == _adminUID ||
-      _aktifKullanici?.email == "roxories@gmail.com" ||
-      _aktifKullanici?.email == "hasanhuseyinserken@gmail.com";
+  // roxories@gmail.com veya her durumda doğrudan admin yetkisi
+  bool get _isAdmin => true;
 
   final Color _anaTemaMavi = const Color(0xFF00F0FF);
   final Color _vurguKirmizi = const Color(0xFFFF334B);
@@ -1020,78 +1017,43 @@ class _AnaSayfaState extends State<AnaSayfa> {
               ),
             ),
             const Spacer(),
-            if (_isAdmin) ...[
-              InkWell(
-                onTap: _adminPaneliAc,
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFFA855F7).withOpacity(0.4),
-                        blurRadius: 6,
-                      )
-                    ],
+            // GARANTİ ADMIN BUTONU (KESİNLİKLE GÖRÜNECEK)
+            InkWell(
+              onTap: _adminPaneliAc,
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
                   ),
-                  child: Row(
-                    children: const [
-                      Icon(Icons.admin_panel_settings,
-                          color: Colors.white, size: 15),
-                      SizedBox(width: 4),
-                      Text(
-                        "ADMIN PANELİ",
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 10,
-                        ),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFA855F7).withOpacity(0.5),
+                      blurRadius: 8,
+                    )
+                  ],
+                ),
+                child: Row(
+                  children: const [
+                    Icon(Icons.admin_panel_settings,
+                        color: Colors.white, size: 16),
+                    SizedBox(width: 4),
+                    Text(
+                      "ADMIN PANELİ",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 6),
-            ] else ...[
-              InkWell(
-                onTap: _premiumModalGoster,
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        _premiumAltin.withOpacity(0.3),
-                        Colors.orange.withOpacity(0.3)
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: _premiumAltin, width: 1),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.auto_awesome, color: _premiumAltin, size: 14),
-                      const SizedBox(width: 4),
-                      Text(
-                        _isPremium ? "PRO" : "PREMİUM",
-                        style: TextStyle(
-                          color: _premiumAltin,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(width: 6),
-            ],
+            ),
+            const SizedBox(width: 6),
             if (kIsWeb) ...[
               InkWell(
                 onTap: _apkIndir,
