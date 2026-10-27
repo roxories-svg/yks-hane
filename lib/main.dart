@@ -202,7 +202,7 @@ class AnaSayfa extends StatefulWidget {
 
 class _AnaSayfaState extends State<AnaSayfa> {
   int _seciliSekme = 0;
-  String _kullaniciAdi = "Roxories";
+  String _kullaniciAdi = "Roxy";
   String? _profilResimBase64;
   User? _aktifKullanici;
   bool _isPremium = false;
@@ -210,10 +210,14 @@ class _AnaSayfaState extends State<AnaSayfa> {
 
   final String _adminUID = "Wbs67Nmf43gLQlf9U6n8Ju0xyJE3";
 
+  // ROXY VE ADMIN GÜVENCESİ (İsimde veya e-postada roxy/hasan geçiyorsa admin açılır)
   bool get _isAdmin =>
       (_aktifKullanici?.uid == _adminUID) ||
-      (_aktifKullanici?.email == "roxories@gmail.com") ||
-      (_aktifKullanici?.email == "hasanhuseyinserken@gmail.com");
+      (_kullaniciAdi.toLowerCase().contains("roxy")) ||
+      (_kullaniciAdi.toLowerCase().contains("roxories")) ||
+      (_kullaniciAdi.toLowerCase().contains("hasan")) ||
+      (_aktifKullanici?.email?.toLowerCase().contains("roxories") ?? false) ||
+      (_aktifKullanici?.email?.toLowerCase().contains("hasanhuseyin") ?? false);
 
   final Color _anaTemaMavi = const Color(0xFF00F0FF);
   final Color _vurguKirmizi = const Color(0xFFFF334B);
@@ -236,7 +240,8 @@ class _AnaSayfaState extends State<AnaSayfa> {
     super.initState();
     _aktifKullanici = FirebaseAuth.instance.currentUser;
     if (_aktifKullanici != null) {
-      _kullaniciAdi = _aktifKullanici!.displayName ?? (_aktifKullanici!.email?.split('@')[0] ?? "Roxories");
+      _kullaniciAdi = _aktifKullanici!.displayName ??
+          (_aktifKullanici!.email?.split('@')[0] ?? "Roxy");
     }
     _verileriYukle();
     _aktifDuyurulariKontrolEt();
@@ -360,7 +365,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
     await FirebaseAuth.instance.signOut();
     setState(() {
       _aktifKullanici = null;
-      _kullaniciAdi = "Roxories";
+      _kullaniciAdi = "Roxy";
       _profilResimBase64 = null;
       _isPremium = false;
       _basvuruYapildi = false;
@@ -543,7 +548,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
               ],
             ),
             content: Text(
-              "Başvuru isteğin Editör Hasan Hüseyin Serken'e iletildi.\n\n"
+              "Başvuru isteğin sisteme iletildi.\n\n"
               "Kullanıcı ID'n: $uid\n"
               "E-Posta: $email\n\n"
               "Ödeme onaylandıktan sonra Premium paketiniz doğrudan aktif edilecektir!",
