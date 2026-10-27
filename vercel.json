@@ -1,5 +1,4 @@
 {
-  "outputDirectory": "build/web",
   "rewrites": [
     { "source": "/app-release.apk", "destination": "/app-release.apk" },
     { "source": "/((?!app-release.apk).*)", "destination": "/index.html" }
