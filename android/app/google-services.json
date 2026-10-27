@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "655065330053",
+    "project_id": "yks-hane",
+    "storage_bucket": "yks-hane.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:655065330053:android:7c5f90a18213e21704d4ec",
+        "android_client_info": {
+          "package_name": "com.example.yks_yanlis_defteri"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "655065330053-fe6d68vt7mdadv9k6fttfsii1o5heccr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDnbUScu7q2haN41ZP73kjuJJ4a4PjQtaw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "655065330053-fe6d68vt7mdadv9k6fttfsii1o5heccr.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

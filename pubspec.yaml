@@ -1,0 +1,36 @@
+name: yks_yanlis_defteri
+description: "YKS Yanlış Takip Uygulaması"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  firebase_core: ^3.8.1
+  firebase_auth: ^5.3.1
+  cloud_firestore: ^5.5.0
+  google_sign_in: ^6.2.2
+  image_picker: ^1.1.2
+  shared_preferences: ^2.3.3
+  url_launcher: ^6.3.1
+  http: ^1.2.0 # Gemini AI için eklendi!
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/banner.png
+    - assets/icon2.png
+
+flutter_launcher_icons:
+  image_path: "assets/icon2.png"
+  android: true
+  ios: true
