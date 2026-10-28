@@ -1,11 +1,11 @@
 {
-    "name": "yks_yanlis_defteri",
-    "short_name": "yks_yanlis_defteri",
+    "name": "YKS Hane",
+    "short_name": "YKS Hane",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "YKS Hane - Yanlış soru takibi ve deneme analiz uygulaması.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

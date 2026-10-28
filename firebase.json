@@ -1,0 +1,35 @@
+{
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "**/*.apk",
+        "headers": [
+          {
+            "key": "Content-Type",
+            "value": "application/vnd.android.package-archive"
+          },
+          {
+            "key": "Content-Disposition",
+            "value": "attachment; filename=app-release.apk"
+          },
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=3600"
+          }
+        ]
+      }
+    ]
+  }
+}
