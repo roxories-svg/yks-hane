@@ -11,6 +11,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
+import 'hedef_odasi.dart';
+import 'siniflar.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -323,6 +325,8 @@ class YKSHaneProfilSayfasi extends StatelessWidget {
   final VoidCallback onLogout;
   final VoidCallback onSwitchAccount;
   final VoidCallback onPremium;
+  final VoidCallback onTargetRoom;
+  final VoidCallback? onAdmin;
 
   const YKSHaneProfilSayfasi({
     super.key,
@@ -335,6 +339,8 @@ class YKSHaneProfilSayfasi extends StatelessWidget {
     required this.onLogout,
     required this.onSwitchAccount,
     required this.onPremium,
+    required this.onTargetRoom,
+    this.onAdmin,
   });
 
   ImageProvider<Object>? get _profilGorseli {
@@ -399,7 +405,7 @@ class YKSHaneProfilSayfasi extends StatelessWidget {
   }
 
   Widget _ayarSatiri(IconData icon, String title, String subtitle,
-      {bool yakinda = false}) {
+      {bool yakinda = false, bool premium = false, VoidCallback? onTap}) {
     return ListTile(
       leading: Container(
           width: 42,
@@ -413,13 +419,29 @@ class YKSHaneProfilSayfasi extends StatelessWidget {
       subtitle: Text(subtitle,
           style: const TextStyle(color: Colors.grey, fontSize: 11)),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (premium) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                  colors: [Color(0xFFFFD700), Color(0xFFFFA000)]),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text('PREMIUM',
+                style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900)),
+          ),
+          const SizedBox(width: 6),
+        ],
         if (yakinda) ...[
           const _YakindaRozeti(),
           const SizedBox(width: 6),
         ],
         const Icon(Icons.chevron_right_rounded, color: Colors.grey),
       ]),
-      onTap: () {},
+      onTap: onTap ?? () {},
     );
   }
 
@@ -538,6 +560,13 @@ class YKSHaneProfilSayfasi extends StatelessWidget {
         ),
         _premiumKart(context),
         const Divider(height: 20),
+        if (onAdmin != null)
+          _ayarSatiri(Icons.admin_panel_settings_rounded, 'Yönetim Paneli',
+              'YKS Hane yönetim araçları',
+              onTap: onAdmin),
+        _ayarSatiri(Icons.local_library_outlined,
+            'Hedef Odası / Sanal Kütüphane', 'Gerçek zamanlı çalışma masaları',
+            premium: true, onTap: onTargetRoom),
         _ayarSatiri(Icons.school_outlined, 'Sınav Tercihleri',
             'Alan ve hedef seçimini düzenle',
             yakinda: true),
@@ -589,6 +618,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
   User? _aktifKullanici;
   bool _isPremium = false;
   bool _basvuruYapildi = false;
+  int _roxCoin = 0;
 
   final String _adminUID = "Wbs67Nmf43gLQlf9U6n8Ju0xyJE3";
 
@@ -613,6 +643,8 @@ class _AnaSayfaState extends State<AnaSayfa> {
   List<SoruModel> sorular = [];
   List<DenemeModel> denemeler = [];
   StreamSubscription<User?>? _authSubscription;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _profilSubscription;
   String? _sonAktifUid;
   bool _authIsBusy = false;
   int _authIslemNo = 0;
@@ -643,6 +675,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
         _profilResimBase64 = null;
         _isPremium = false;
         _basvuruYapildi = false;
+        _roxCoin = 0;
         sorular = [];
         denemeler = [];
       });
@@ -657,6 +690,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
   @override
   void dispose() {
     _authSubscription?.cancel();
+    _profilSubscription?.cancel();
     super.dispose();
   }
 
@@ -728,6 +762,8 @@ class _AnaSayfaState extends State<AnaSayfa> {
   Future<void> _cikisYap() async {
     if (_authIsBusy) return;
     _authIsBusy = true;
+    await _profilSubscription?.cancel();
+    _profilSubscription = null;
     if (mounted) {
       setState(() {
         _aktifKullanici = null;
@@ -735,6 +771,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
         _profilResimBase64 = null;
         _isPremium = false;
         _basvuruYapildi = false;
+        _roxCoin = 0;
         sorular = [];
         denemeler = [];
         _seciliSekme = 0;
@@ -803,6 +840,19 @@ class _AnaSayfaState extends State<AnaSayfa> {
     if (_aktifKullanici == null) return;
     try {
       final uid = _aktifKullanici!.uid;
+      await _profilSubscription?.cancel();
+      _profilSubscription = FirebaseFirestore.instance
+          .collection('kullanicilar')
+          .doc(uid)
+          .snapshots()
+          .listen((snapshot) {
+        final data = snapshot.data();
+        if (!mounted || data == null) return;
+        final value = data['roxCoin'];
+        if (value is num && mounted) {
+          setState(() => _roxCoin = value.toInt());
+        }
+      });
       final doc = await FirebaseFirestore.instance
           .collection('kullanicilar')
           .doc(uid)
@@ -830,6 +880,9 @@ class _AnaSayfaState extends State<AnaSayfa> {
           if (data['basvuruYapildi'] is bool) {
             _basvuruYapildi = data['basvuruYapildi'] as bool;
           }
+          if (data['roxCoin'] is num) {
+            _roxCoin = (data['roxCoin'] as num).toInt();
+          }
           if (data['sorular'] != null) {
             final List list = data['sorular'];
             sorular = list.map((e) => SoruModel.fromJson(e)).toList();
@@ -854,6 +907,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
           'profilResimBase64': _profilResimBase64,
           'isPremium': _isPremium,
           'basvuruYapildi': _basvuruYapildi,
+          'roxCoin': _roxCoin,
           'sorular': sorular.map((e) => e.toJson()).toList(),
           'denemeler': denemeler.map((e) => e.toJson()).toList(),
         };
@@ -1320,6 +1374,31 @@ class _AnaSayfaState extends State<AnaSayfa> {
     );
   }
 
+  void _hedefOdasiniAc() {
+    if (_aktifKullanici == null) {
+      _girisBottomSheetGoster();
+      return;
+    }
+    if (!_isPremium) {
+      _premiumModalGoster();
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => HedefOdasiSayfasi(
+          isDarkMode: widget.isDarkMode,
+          user: _aktifKullanici,
+          kullaniciAdi: _kullaniciAdi,
+          profilResimBase64: _profilResimBase64,
+          isPremium: _isPremium,
+          onLogin: _girisBottomSheetGoster,
+          onPremium: _premiumModalGoster,
+        ),
+      ),
+    );
+  }
+
   void _profilSayfasiAc() {
     Navigator.push(
       context,
@@ -1334,6 +1413,8 @@ class _AnaSayfaState extends State<AnaSayfa> {
           onLogout: _cikisYap,
           onSwitchAccount: _hesabiDegistir,
           onPremium: _premiumModalGoster,
+          onTargetRoom: _hedefOdasiniAc,
+          onAdmin: _isAdmin ? _adminPaneliAc : null,
         ),
       ),
     );
@@ -1412,82 +1493,6 @@ class _AnaSayfaState extends State<AnaSayfa> {
     );
   }
 
-  void _paylasimEkraniAc() {
-    final String sahteLink =
-        "https://share.ykshane.app/ogrenci_${DateTime.now().millisecondsSinceEpoch}";
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor:
-            widget.isDarkMode ? const Color(0xFF0F172A) : Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: _anaTemaMavi.withOpacity(0.4), width: 1.5),
-        ),
-        title: Row(
-          children: [
-            Icon(Icons.share, color: _anaTemaMavi),
-            const SizedBox(width: 8),
-            const Text("YKS Hane Paylaşım Linki",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-                "Bu bağlantıyı paylaşarak çalışmalarını ve netlerini arkadaşlarına gösterebilirsin:",
-                style: TextStyle(color: Colors.grey, fontSize: 12)),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: widget.isDarkMode
-                    ? const Color(0xFF030712)
-                    : Colors.grey[100],
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _anaTemaMavi.withOpacity(0.4)),
-              ),
-              child: SelectableText(
-                sahteLink,
-                style: TextStyle(
-                    color: _anaTemaMavi,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            child: const Text("Kapat", style: TextStyle(color: Colors.grey)),
-            onPressed: () => Navigator.pop(ctx),
-          ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _anaTemaMavi,
-              foregroundColor: Colors.black,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-            ),
-            icon: const Icon(Icons.copy, size: 16),
-            label: const Text("Linki Kopyala",
-                style: TextStyle(fontWeight: FontWeight.bold)),
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: sahteLink));
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                    content: Text("Paylaşım bağlantısı panoya kopyalandı! 🔗")),
-              );
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
   void _soruEkleEkraniAc() async {
     if (_aktifKullanici == null) {
       _girisGerekliDialog(
@@ -1506,8 +1511,20 @@ class _AnaSayfaState extends State<AnaSayfa> {
     if (yeniSoru != null) {
       setState(() {
         sorular.add(yeniSoru);
+        _roxCoin += 5;
       });
+      await FirebaseFirestore.instance
+          .collection('kullanicilar')
+          .doc(_aktifKullanici!.uid)
+          .set(<String, dynamic>{
+        'roxCoin': FieldValue.increment(5),
+      }, SetOptions(merge: true));
       await _verileriKaydet();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('+5 RC kazanıldı! 🪙')),
+        );
+      }
     }
   }
 
@@ -1580,12 +1597,34 @@ class _AnaSayfaState extends State<AnaSayfa> {
                   ),
                 ),
                 const SizedBox(width: 4),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD700).withOpacity(.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: const Color(0xFFFFD700).withOpacity(.5)),
+                  ),
+                  child: Text('🪙 $_roxCoin RC',
+                      style: const TextStyle(
+                          color: Color(0xFFFFD700),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900)),
+                ),
+                const SizedBox(width: 4),
                 Icon(Icons.arrow_drop_down, color: _anaTemaMavi, size: 18),
               ],
             ),
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Hedef Odası',
+            onPressed: _hedefOdasiniAc,
+            icon: const Icon(Icons.local_library_outlined,
+                color: Color(0xFF00F0FF)),
+          ),
           Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -1623,41 +1662,6 @@ class _AnaSayfaState extends State<AnaSayfa> {
               ),
             ),
           ),
-          if (_isAdmin)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4.0),
-                child: InkWell(
-                  onTap: _adminPaneliAc,
-                  borderRadius: BorderRadius.circular(10),
-                  child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFFA855F7), Color(0xFF6366F1)],
-                      ),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      children: const [
-                        Icon(Icons.admin_panel_settings,
-                            color: Colors.white, size: 14),
-                        SizedBox(width: 2),
-                        Text(
-                          "ADMIN",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
           if (kIsWeb)
             Center(
               child: Padding(
@@ -1693,20 +1697,6 @@ class _AnaSayfaState extends State<AnaSayfa> {
               ),
             ),
           _bildirimRozeti(),
-          IconButton(
-            icon: Icon(Icons.share_outlined, color: _anaTemaMavi, size: 20),
-            onPressed: _paylasimEkraniAc,
-            tooltip: "Paylaşım Linki Oluştur",
-          ),
-          IconButton(
-            icon: Icon(
-              widget.isDarkMode ? Icons.light_mode : Icons.dark_mode,
-              color: _anaTemaMavi,
-              size: 20,
-            ),
-            onPressed: () => widget.onThemeChanged(!widget.isDarkMode),
-            tooltip: "Tema Değiştir",
-          ),
         ],
       ),
       body: Stack(
@@ -1953,20 +1943,31 @@ class _AnaSayfaState extends State<AnaSayfa> {
                                   isDarkMode: widget.isDarkMode,
                                 ),
                               )
-                            : Padding(
-                                padding: const EdgeInsets.only(bottom: 80),
-                                child: AnalizSayfasi(
-                                  denemeler: denemeler,
-                                  onDenemeEkleTiklandi: _denemeEkleEkraniAc,
-                                  onDenemeSilindi: (id) {
-                                    setState(() {
-                                      denemeler.removeWhere((d) => d.id == id);
-                                    });
-                                    _verileriKaydet();
-                                  },
-                                  isDarkMode: widget.isDarkMode,
-                                ),
-                              ),
+                            : _seciliSekme == 4
+                                ? SiniflarSayfasi(
+                                    user: _aktifKullanici,
+                                    kullaniciAdi: _kullaniciAdi,
+                                    profilResimBase64: _profilResimBase64,
+                                    roxCoin: _roxCoin,
+                                    isDarkMode: widget.isDarkMode,
+                                    isAdmin: _isAdmin,
+                                    onLogin: _googleIleGirisYap,
+                                  )
+                                : Padding(
+                                    padding: const EdgeInsets.only(bottom: 80),
+                                    child: AnalizSayfasi(
+                                      denemeler: denemeler,
+                                      onDenemeEkleTiklandi: _denemeEkleEkraniAc,
+                                      onDenemeSilindi: (id) {
+                                        setState(() {
+                                          denemeler
+                                              .removeWhere((d) => d.id == id);
+                                        });
+                                        _verileriKaydet();
+                                      },
+                                      isDarkMode: widget.isDarkMode,
+                                    ),
+                                  ),
               ),
             ],
           ),
@@ -2011,6 +2012,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
                         const SizedBox(width: 45),
                         _dockOgesi(
                             Icons.local_library_outlined, "Kütüphane", 2),
+                        _dockOgesi(Icons.groups_2_outlined, "Sınıflar", 4),
                         _dockOgesi(Icons.bar_chart, "Analiz", 3),
                       ],
                     ),
@@ -2033,9 +2035,15 @@ class _AnaSayfaState extends State<AnaSayfa> {
                   shape: const CircleBorder(),
                   onPressed: _seciliSekme == 3
                       ? _denemeEkleEkraniAc
-                      : _soruEkleEkraniAc,
+                      : _seciliSekme == 4
+                          ? null
+                          : _soruEkleEkraniAc,
                   child: Icon(
-                    _seciliSekme == 3 ? Icons.add_chart : Icons.add,
+                    _seciliSekme == 3
+                        ? Icons.add_chart
+                        : _seciliSekme == 4
+                            ? Icons.groups_2
+                            : Icons.add,
                     color: Colors.white,
                     size: 28,
                   ),
@@ -2330,6 +2338,129 @@ class _AdminPaneliSayfasiState extends State<AdminPaneliSayfasi> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           IconButton(
+                            icon: const Icon(Icons.manage_accounts,
+                                color: Color(0xFF00F0FF)),
+                            tooltip: 'Kullanıcı profilini düzenle',
+                            onPressed: () async {
+                              final nameController =
+                                  TextEditingController(text: kIsim.toString());
+                              String? photo =
+                                  data['profilResimBase64']?.toString();
+                              await showDialog<void>(
+                                  context: context,
+                                  builder: (dialogContext) => StatefulBuilder(
+                                      builder: (dialogContext,
+                                              dialogSetState) =>
+                                          AlertDialog(
+                                            backgroundColor:
+                                                const Color(0xFF0F172A),
+                                            title: Text(
+                                                '$kIsim profilini düzenle',
+                                                style: const TextStyle(
+                                                    color: Colors.white)),
+                                            content: SingleChildScrollView(
+                                                child: Column(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                  CircleAvatar(
+                                                      radius: 44,
+                                                      backgroundImage:
+                                                          photo?.isNotEmpty ==
+                                                                  true
+                                                              ? MemoryImage(
+                                                                  base64Decode(
+                                                                      photo!))
+                                                              : null,
+                                                      child:
+                                                          photo?.isNotEmpty !=
+                                                                  true
+                                                              ? const Icon(
+                                                                  Icons.person)
+                                                              : null),
+                                                  const SizedBox(height: 10),
+                                                  Row(
+                                                      mainAxisAlignment:
+                                                          MainAxisAlignment
+                                                              .center,
+                                                      children: [
+                                                        TextButton.icon(
+                                                            onPressed:
+                                                                () async {
+                                                              final file = await ImagePicker().pickImage(
+                                                                  source:
+                                                                      ImageSource
+                                                                          .gallery,
+                                                                  maxWidth: 800,
+                                                                  imageQuality:
+                                                                      70);
+                                                              if (file !=
+                                                                  null) {
+                                                                final bytes =
+                                                                    await file
+                                                                        .readAsBytes();
+                                                                dialogSetState(
+                                                                    () => photo =
+                                                                        base64Encode(
+                                                                            bytes));
+                                                              }
+                                                            },
+                                                            icon: const Icon(Icons
+                                                                .photo_library),
+                                                            label: const Text(
+                                                                'Fotoğraf')),
+                                                        if (photo?.isNotEmpty ==
+                                                            true)
+                                                          TextButton(
+                                                              onPressed: () =>
+                                                                  dialogSetState(
+                                                                      () => photo =
+                                                                          null),
+                                                              child: const Text(
+                                                                  'Kaldır'))
+                                                      ]),
+                                                  TextField(
+                                                      controller:
+                                                          nameController,
+                                                      style: const TextStyle(
+                                                          color: Colors.white),
+                                                      maxLength: 30,
+                                                      decoration:
+                                                          const InputDecoration(
+                                                              labelText:
+                                                                  'Kullanıcı adı')),
+                                                ])),
+                                            actions: [
+                                              TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(
+                                                          dialogContext),
+                                                  child: const Text('İptal')),
+                                              ElevatedButton(
+                                                  onPressed: () async {
+                                                    final newName =
+                                                        nameController.text
+                                                            .trim();
+                                                    if (newName.isEmpty) return;
+                                                    await FirebaseFirestore
+                                                        .instance
+                                                        .collection(
+                                                            'kullanicilar')
+                                                        .doc(uid)
+                                                        .set({
+                                                      'kullaniciAdi': newName,
+                                                      'profilResimBase64': photo
+                                                    }, SetOptions(merge: true));
+                                                    if (dialogContext.mounted)
+                                                      Navigator.pop(
+                                                          dialogContext);
+                                                  },
+                                                  child: const Text('Kaydet'))
+                                            ],
+                                          )));
+                            },
+                          ),
+                          IconButton(
                             icon: Icon(
                               isPro ? Icons.star : Icons.star_border,
                               color:
@@ -2341,6 +2472,58 @@ class _AdminPaneliSayfasiState extends State<AdminPaneliSayfasi> {
                                   .collection('kullanicilar')
                                   .doc(uid)
                                   .update({'isPremium': !isPro});
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.monetization_on,
+                                color: Color(0xFFFFD700)),
+                            tooltip: "RoxCoin yükle",
+                            onPressed: () async {
+                              final TextEditingController miktarController =
+                                  TextEditingController();
+                              final int? miktar = await showDialog<int>(
+                                context: context,
+                                builder: (dialogContext) => AlertDialog(
+                                  backgroundColor: const Color(0xFF0F172A),
+                                  title: Text('$kIsim — RC Yükle',
+                                      style:
+                                          const TextStyle(color: Colors.white)),
+                                  content: TextField(
+                                    controller: miktarController,
+                                    keyboardType: TextInputType.number,
+                                    inputFormatters: [
+                                      FilteringTextInputFormatter.digitsOnly
+                                    ],
+                                    style: const TextStyle(color: Colors.white),
+                                    decoration: const InputDecoration(
+                                        hintText: 'Yüklenecek RC miktarı'),
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(dialogContext),
+                                        child: const Text('İptal')),
+                                    ElevatedButton(
+                                        onPressed: () {
+                                          final int? value = int.tryParse(
+                                              miktarController.text.trim());
+                                          Navigator.pop(dialogContext, value);
+                                        },
+                                        child: const Text('Yükle')),
+                                  ],
+                                ),
+                              );
+                              if (miktar == null || miktar <= 0) return;
+                              await FirebaseFirestore.instance
+                                  .collection('kullanicilar')
+                                  .doc(uid)
+                                  .set(<String, dynamic>{
+                                'roxCoin': FieldValue.increment(miktar),
+                              }, SetOptions(merge: true));
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                                  content: Text(
+                                      '$kIsim hesabına +$miktar RC yüklendi')));
                             },
                           ),
                           IconButton(

@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isAdmin() {
+      return signedIn() && (
+        request.auth.uid == 'Wbs67Nmf43gLQlf9U6n8Ju0xyJE3' ||
+        request.auth.token.email.matches('.*(@|\\.).*roxories.*') ||
+        request.auth.token.email.matches('.*hasanhuseyin.*')
+      );
+    }
+
+    match /kullanicilar/{uid} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == uid;
+      allow update: if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow delete: if isAdmin();
+    }
+
+    match /siniflar/{classId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid && request.resource.data.memberIds is list;
+      allow update: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid) ||
+                        (signedIn() && request.resource.data.ownerId == resource.data.ownerId &&
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds']));
+      allow delete: if isAdmin() || (signedIn() && resource.data.ownerId == request.auth.uid);
+
+      match /messages/{messageId} {
+        allow read, create: if signedIn();
+        allow update, delete: if signedIn() && (resource.data.senderId == request.auth.uid || isAdmin());
+      }
+
+      match /presence/{uid} {
+        allow read: if signedIn();
+        allow write: if signedIn() && request.auth.uid == uid;
+      }
+
+      match /tables/{tableId} {
+        allow read: if signedIn();
+        allow create, update: if signedIn();
+        allow delete: if isAdmin();
+      }
+
+      match /table_chats/{tableId}/messages/{messageId} {
+        allow read, create: if signedIn();
+        allow update, delete: if isAdmin() || (signedIn() && resource.data.senderId == request.auth.uid);
+      }
+    }
+
+    match /target_rooms/{roomId}/{document=**} {
+      allow read, write: if signedIn();
+    }
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
