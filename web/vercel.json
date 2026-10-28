@@ -1,6 +1,10 @@
 {
   "rewrites": [
     { "source": "/app-release.apk", "destination": "/app-release.apk" },
+    { "source": "/assets/(.*)", "destination": "/assets/$1" },
+    { "source": "/canvaskit/(.*)", "destination": "/canvaskit/$1" },
+    { "source": "/icons/(.*)", "destination": "/icons/$1" },
+    { "source": "/(.*\\.(js|json|png|jpg|wasm|ico|css))", "destination": "/$1" },
     { "source": "/((?!app-release.apk).*)", "destination": "/index.html" }
   ]
 }
