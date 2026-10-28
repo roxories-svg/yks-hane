@@ -86,9 +86,116 @@ class _YKSYanlisDefterimAppState extends State<YKSYanlisDefterimApp> {
               ),
               cardColor: Colors.white,
             ),
-      home: AnaSayfa(
-        isDarkMode: _isDarkMode,
-        onThemeChanged: _temaDegistir,
+      home: StreamBuilder<User?>(
+        stream: FirebaseAuth.instance.authStateChanges(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Scaffold(
+              body: Center(
+                  child: CircularProgressIndicator(color: Color(0xFF00F0FF))),
+            );
+          }
+          // Oturum açılmamışsa ZORUNLU Giriş Ekranını göster
+          if (!snapshot.hasData || snapshot.data == null) {
+            return ZorunluGirisSayfasi(
+              isDarkMode: _isDarkMode,
+              onThemeChanged: _temaDegistir,
+            );
+          }
+          // Oturum açılmışsa ana sayfaya geç
+          return AnaSayfa(
+            isDarkMode: _isDarkMode,
+            onThemeChanged: _temaDegistir,
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ================= ZORUNLU GİRİŞ EKRANI (YOUTUBE / APP GİRİŞİ) =================
+class ZorunluGirisSayfasi extends StatelessWidget {
+  final bool isDarkMode;
+  final Function(bool) onThemeChanged;
+
+  const ZorunluGirisSayfasi({
+    super.key,
+    required this.isDarkMode,
+    required this.onThemeChanged,
+  });
+
+  Future<void> _googleIleGirisYap(BuildContext context) async {
+    try {
+      if (kIsWeb) {
+        GoogleAuthProvider provider = GoogleAuthProvider();
+        await FirebaseAuth.instance.signInWithPopup(provider);
+      } else {
+        final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+        final GoogleSignInAuthentication? googleAuth =
+            await googleUser?.authentication;
+        if (googleAuth == null) return;
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        await FirebaseAuth.instance.signInWithCredential(credential);
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Giriş hatası: $e")),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.lock_outline,
+                  size: 80, color: Color(0xFF00F0FF)),
+              const SizedBox(height: 20),
+              const Text(
+                "YKS Hane'ye Hoş Geldin",
+                style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                "Devam etmek ve yanlış defterine erişmek için lütfen Google hesabınla oturum aç.",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey, fontSize: 13),
+              ),
+              const SizedBox(height: 40),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black87,
+                  minimumSize: const Size.fromHeight(50),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                ),
+                icon: const Text("G",
+                    style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF4285F4))),
+                label: const Text("Google ile Oturum Aç",
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                onPressed: () => _googleIleGirisYap(context),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -202,7 +309,7 @@ class AnaSayfa extends StatefulWidget {
 
 class _AnaSayfaState extends State<AnaSayfa> {
   int _seciliSekme = 0;
-  String _kullaniciAdi = "Roxy";
+  String _kullaniciAdi = "Öğrenci";
   String? _profilResimBase64;
   User? _aktifKullanici;
   bool _isPremium = false;
@@ -210,12 +317,9 @@ class _AnaSayfaState extends State<AnaSayfa> {
 
   final String _adminUID = "Wbs67Nmf43gLQlf9U6n8Ju0xyJE3";
 
-  // ROXY VE ADMIN GÜVENCESİ (İsimde veya e-postada roxy/hasan geçiyorsa admin açılır)
+  // Sadece senin gerçek Google hesabın / UID'n veya e-postan admin olabilir
   bool get _isAdmin =>
       (_aktifKullanici?.uid == _adminUID) ||
-      (_kullaniciAdi.toLowerCase().contains("roxy")) ||
-      (_kullaniciAdi.toLowerCase().contains("roxories")) ||
-      (_kullaniciAdi.toLowerCase().contains("hasan")) ||
       (_aktifKullanici?.email?.toLowerCase().contains("roxories") ?? false) ||
       (_aktifKullanici?.email?.toLowerCase().contains("hasanhuseyin") ?? false);
 
@@ -241,9 +345,9 @@ class _AnaSayfaState extends State<AnaSayfa> {
     _aktifKullanici = FirebaseAuth.instance.currentUser;
     if (_aktifKullanici != null) {
       _kullaniciAdi = _aktifKullanici!.displayName ??
-          (_aktifKullanici!.email?.split('@')[0] ?? "Roxy");
+          (_aktifKullanici!.email?.split('@')[0] ?? "Öğrenci");
     }
-    _verileriYukle();
+    _verileriBuluttanYukle();
     _aktifDuyurulariKontrolEt();
   }
 
@@ -307,123 +411,11 @@ class _AnaSayfaState extends State<AnaSayfa> {
     }
   }
 
-  Future<void> _googleIleGirisYap() async {
-    try {
-      UserCredential userCredential;
-
-      if (kIsWeb) {
-        GoogleAuthProvider provider = GoogleAuthProvider();
-        userCredential = await FirebaseAuth.instance.signInWithPopup(provider);
-      } else {
-        final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-        final GoogleSignInAuthentication? googleAuth =
-            await googleUser?.authentication;
-
-        if (googleAuth == null) return;
-
-        final credential = GoogleAuthProvider.credential(
-          accessToken: googleAuth.accessToken,
-          idToken: googleAuth.idToken,
-        );
-        userCredential =
-            await FirebaseAuth.instance.signInWithCredential(credential);
-      }
-
-      setState(() {
-        _aktifKullanici = userCredential.user;
-        if (_aktifKullanici?.displayName != null) {
-          _kullaniciAdi = _aktifKullanici!.displayName!;
-        } else if (_aktifKullanici?.email != null) {
-          _kullaniciAdi = _aktifKullanici!.email!.split('@')[0];
-        }
-      });
-
-      await _verileriBuluttanYukle();
-
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text(
-                  "Google ile başarıyla giriş yapıldı! Hoş geldin $_kullaniciAdi 🚀")),
-        );
-      }
-    } catch (e) {
-      debugPrint("Google giriş hatası: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Giriş yapılırken bir hata oluştu: $e")),
-        );
-      }
-    }
-  }
-
   Future<void> _cikisYap() async {
     if (!kIsWeb) {
       await GoogleSignIn().signOut();
     }
     await FirebaseAuth.instance.signOut();
-    setState(() {
-      _aktifKullanici = null;
-      _kullaniciAdi = "Roxy";
-      _profilResimBase64 = null;
-      _isPremium = false;
-      _basvuruYapildi = false;
-    });
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Hesaptan çıkış yapıldı.")),
-      );
-    }
-  }
-
-  Future<void> _verileriYukle() async {
-    try {
-      if (_aktifKullanici != null) {
-        await _verileriBuluttanYukle();
-        return;
-      }
-
-      final prefs = await SharedPreferences.getInstance();
-      final kayitliIsim = prefs.getString('kullanici_adi');
-      final kayitliProfilBase64 = prefs.getString('profil_resim_base64');
-      final kayitliPremium = prefs.getBool('is_premium') ?? false;
-
-      if (kayitliIsim != null && kayitliIsim.trim().isNotEmpty) {
-        setState(() {
-          _kullaniciAdi = kayitliIsim.trim();
-        });
-      }
-      if (kayitliProfilBase64 != null &&
-          kayitliProfilBase64.trim().isNotEmpty) {
-        setState(() {
-          _profilResimBase64 = kayitliProfilBase64.trim();
-        });
-      }
-
-      setState(() {
-        _isPremium = kayitliPremium;
-      });
-
-      final sorularJson = prefs.getString('yks_sorular_json');
-      if (sorularJson != null) {
-        final List decoded = jsonDecode(sorularJson);
-        setState(() {
-          sorular = decoded.map((e) => SoruModel.fromJson(e)).toList();
-        });
-      }
-
-      final denemelerJson = prefs.getString('yks_denemeler_json');
-      if (denemelerJson != null) {
-        final List decoded = jsonDecode(denemelerJson);
-        setState(() {
-          denemeler = decoded.map((e) => DenemeModel.fromJson(e)).toList();
-        });
-      }
-    } catch (e) {
-      debugPrint("Veri yükleme hatası: $e");
-    }
   }
 
   Future<void> _verileriBuluttanYukle() async {
@@ -440,6 +432,8 @@ class _AnaSayfaState extends State<AnaSayfa> {
         setState(() {
           if (data['kullaniciAdi'] != null) {
             _kullaniciAdi = data['kullaniciAdi'];
+          } else if (_aktifKullanici?.displayName != null) {
+            _kullaniciAdi = _aktifKullanici!.displayName!;
           }
           if (data['profilResimBase64'] != null) {
             _profilResimBase64 = data['profilResimBase64'];
@@ -466,7 +460,9 @@ class _AnaSayfaState extends State<AnaSayfa> {
   }
 
   Future<void> _verileriBulutaKaydet() async {
+    if (_aktifKullanici == null) return;
     try {
+      final uid = _aktifKullanici!.uid;
       final dataMap = {
         'kullaniciAdi': _kullaniciAdi,
         'profilResimBase64': _profilResimBase64,
@@ -475,43 +471,17 @@ class _AnaSayfaState extends State<AnaSayfa> {
         'sorular': sorular.map((e) => e.toJson()).toList(),
         'denemeler': denemeler.map((e) => e.toJson()).toList(),
       };
-
-      if (_aktifKullanici != null) {
-        final uid = _aktifKullanici!.uid;
-        await FirebaseFirestore.instance
-            .collection('kullanicilar')
-            .doc(uid)
-            .set(dataMap, SetOptions(merge: true));
-      } else {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('kullanici_adi', _kullaniciAdi);
-        await prefs.setBool('is_premium', _isPremium);
-        if (_profilResimBase64 != null) {
-          await prefs.setString('profil_resim_base64', _profilResimBase64!);
-        }
-        await prefs.setString('yks_sorular_json',
-            jsonEncode(sorular.map((e) => e.toJson()).toList()));
-        await prefs.setString('yks_denemeler_json',
-            jsonEncode(denemeler.map((e) => e.toJson()).toList()));
-      }
+      await FirebaseFirestore.instance
+          .collection('kullanicilar')
+          .doc(uid)
+          .set(dataMap, SetOptions(merge: true));
     } catch (e) {
       debugPrint("Buluta veri kaydetme hatası: $e");
     }
   }
 
   Future<void> _premiumBasvurusuGonder() async {
-    if (_aktifKullanici == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text("Başvuru yapabilmek için önce Google ile giriş yapmalısın!"),
-          backgroundColor: Color(0xFFFF334B),
-        ),
-      );
-      _profilDuzenleDialog();
-      return;
-    }
-
+    if (_aktifKullanici == null) return;
     try {
       final uid = _aktifKullanici!.uid;
       final email = _aktifKullanici!.email ?? "E-posta yok";
@@ -548,7 +518,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
               ],
             ),
             content: Text(
-              "Başvuru isteğin sisteme iletildi.\n\n"
+              "Başvuru isteğin sistem yöneticisine iletildi.\n\n"
               "Kullanıcı ID'n: $uid\n"
               "E-Posta: $email\n\n"
               "Ödeme onaylandıktan sonra Premium paketiniz doğrudan aktif edilecektir!",
@@ -570,16 +540,6 @@ class _AnaSayfaState extends State<AnaSayfa> {
     } catch (e) {
       debugPrint("Başvuru hatası: $e");
     }
-  }
-
-  Future<void> _profilKaydet(String yeniIsim, String? yeniBase64) async {
-    setState(() {
-      _kullaniciAdi = yeniIsim;
-      if (yeniBase64 != null) {
-        _profilResimBase64 = yeniBase64;
-      }
-    });
-    await _verileriBulutaKaydet();
   }
 
   Future<void> _sorulariKaydet() async {
@@ -615,10 +575,9 @@ class _AnaSayfaState extends State<AnaSayfa> {
             Text(
               "YKS Hane Premium",
               style: TextStyle(
-                color: _premiumAltin,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
+                  color: _premiumAltin,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18),
             ),
           ],
         ),
@@ -724,161 +683,65 @@ class _AnaSayfaState extends State<AnaSayfa> {
     );
   }
 
-  void _profilDuzenleDialog() {
-    final TextEditingController isimController =
-        TextEditingController(text: _kullaniciAdi);
-    String? secilenYeniBase64 = _profilResimBase64;
-
+  void _profilBilgiDialog() {
     showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor:
-              widget.isDarkMode ? const Color(0xFF0F172A) : Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-            side: BorderSide(color: _anaTemaMavi.withOpacity(0.4), width: 1.5),
-          ),
-          title: Text(
-            "Profil & Google Kimlik",
-            style: TextStyle(
-              color: _anaTemaMavi,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.1,
+      builder: (ctx) => AlertDialog(
+        backgroundColor:
+            widget.isDarkMode ? const Color(0xFF0F172A) : Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: _anaTemaMavi.withOpacity(0.4), width: 1.5),
+        ),
+        title: Text(
+          "Google Hesap Bilgileri",
+          style: TextStyle(color: _anaTemaMavi, fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 32,
+              backgroundColor: _anaTemaMavi,
+              backgroundImage: _aktifKullanici?.photoURL != null
+                  ? NetworkImage(_aktifKullanici!.photoURL!)
+                  : null,
+              child: _aktifKullanici?.photoURL == null
+                  ? const Icon(Icons.person, color: Colors.black, size: 28)
+                  : null,
             ),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (_aktifKullanici == null) ...[
-                  ElevatedButton.icon(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black87,
-                      minimumSize: const Size.fromHeight(48),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    icon: const Text("G",
-                        style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF4285F4))),
-                    label: const Text("Google ile Giriş Yap",
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 15)),
-                    onPressed: _googleIleGirisYap,
-                  ),
-                  const SizedBox(height: 12),
-                  const Divider(color: Colors.grey),
-                  const SizedBox(height: 8),
-                ] else ...[
-                  Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: Colors.green.withOpacity(0.15),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: Colors.greenAccent.withOpacity(0.4)),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.check_circle,
-                            color: Colors.greenAccent),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            "Oturum Açık:\n${_aktifKullanici?.email ?? ''}",
-                            style: const TextStyle(
-                                fontSize: 12, color: Colors.white70),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _vurguKirmizi,
-                      side: BorderSide(color: _vurguKirmizi.withOpacity(0.6)),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                    ),
-                    icon: const Icon(Icons.logout),
-                    label: const Text("Hesaptan Çıkış Yap"),
-                    onPressed: _cikisYap,
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                GestureDetector(
-                  onTap: () async {
-                    final picker = ImagePicker();
-                    final resim = await picker.pickImage(
-                      source: ImageSource.gallery,
-                      maxWidth: 500,
-                      maxHeight: 500,
-                      imageQuality: 65,
-                    );
-                    if (resim != null) {
-                      final bytes = await resim.readAsBytes();
-                      setDialogState(() {
-                        secilenYeniBase64 = base64Encode(bytes);
-                      });
-                    }
-                  },
-                  child: CircleAvatar(
-                    radius: 32,
-                    backgroundColor: _anaTemaMavi,
-                    backgroundImage: secilenYeniBase64 != null
-                        ? MemoryImage(base64Decode(secilenYeniBase64!))
-                        : null,
-                    child: secilenYeniBase64 == null
-                        ? const Icon(Icons.camera_alt,
-                            color: Colors.black, size: 28)
-                        : null,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text("Avatarı Değiştir",
-                    style: TextStyle(color: Colors.grey, fontSize: 11)),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: isimController,
-                  decoration: InputDecoration(
-                    labelText: "Kullanıcı Adın",
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              child: const Text("İptal", style: TextStyle(color: Colors.grey)),
-              onPressed: () => Navigator.pop(ctx),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _anaTemaMavi,
-                foregroundColor: Colors.black,
+            const SizedBox(height: 12),
+            Text(_kullaniciAdi,
+                style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: Colors.white)),
+            const SizedBox(height: 4),
+            Text(_aktifKullanici?.email ?? '',
+                style: const TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: _vurguKirmizi,
+                side: BorderSide(color: _vurguKirmizi.withOpacity(0.6)),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
               ),
-              child: const Text("KAYDET",
-                  style: TextStyle(fontWeight: FontWeight.bold)),
-              onPressed: () async {
-                if (isimController.text.trim().isNotEmpty) {
-                  await _profilKaydet(
-                      isimController.text.trim(), secilenYeniBase64);
-                }
+              icon: const Icon(Icons.logout),
+              label: const Text("Oturumu Kapat"),
+              onPressed: () {
                 Navigator.pop(ctx);
+                _cikisYap();
               },
             ),
           ],
         ),
+        actions: [
+          TextButton(
+            child: const Text("Kapat", style: TextStyle(color: Colors.grey)),
+            onPressed: () => Navigator.pop(ctx),
+          ),
+        ],
       ),
     );
   }
@@ -998,7 +861,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: InkWell(
-          onTap: _profilDuzenleDialog,
+          onTap: _profilBilgiDialog,
           borderRadius: BorderRadius.circular(12),
           child: Row(
             mainAxisSize: MainAxisSize.min,
@@ -1006,10 +869,10 @@ class _AnaSayfaState extends State<AnaSayfa> {
               CircleAvatar(
                 radius: 18,
                 backgroundColor: _anaTemaMavi,
-                backgroundImage: _profilResimBase64 != null
-                    ? MemoryImage(base64Decode(_profilResimBase64!))
+                backgroundImage: _aktifKullanici?.photoURL != null
+                    ? NetworkImage(_aktifKullanici!.photoURL!)
                     : null,
-                child: _profilResimBase64 == null
+                child: _aktifKullanici?.photoURL == null
                     ? CircleAvatar(
                         radius: 16,
                         backgroundColor: widget.isDarkMode
@@ -1048,7 +911,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
                         ? "SİSTEM YÖNETİCİSİ 👑"
                         : _isPremium
                             ? "PREMIUM ÜYE 👑"
-                            : "YKS 1.Sİ",
+                            : "YKS ÖĞRENCİSİ",
                     style: TextStyle(
                         fontSize: 9,
                         color: (_isPremium || _isAdmin)
@@ -1062,7 +925,6 @@ class _AnaSayfaState extends State<AnaSayfa> {
           ),
         ),
         actions: [
-          // PREMIUM BUTONU (Üst barda her zaman erişilebilir)
           Center(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -1100,7 +962,6 @@ class _AnaSayfaState extends State<AnaSayfa> {
               ),
             ),
           ),
-          // ADMIN BUTONU
           if (_isAdmin)
             Center(
               child: Padding(
