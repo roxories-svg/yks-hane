@@ -86,116 +86,9 @@ class _YKSYanlisDefterimAppState extends State<YKSYanlisDefterimApp> {
               ),
               cardColor: Colors.white,
             ),
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Scaffold(
-              body: Center(
-                  child: CircularProgressIndicator(color: Color(0xFF00F0FF))),
-            );
-          }
-          // Oturum açılmamışsa ZORUNLU Giriş Ekranını göster
-          if (!snapshot.hasData || snapshot.data == null) {
-            return ZorunluGirisSayfasi(
-              isDarkMode: _isDarkMode,
-              onThemeChanged: _temaDegistir,
-            );
-          }
-          // Oturum açılmışsa ana sayfaya geç
-          return AnaSayfa(
-            isDarkMode: _isDarkMode,
-            onThemeChanged: _temaDegistir,
-          );
-        },
-      ),
-    );
-  }
-}
-
-// ================= ZORUNLU GİRİŞ EKRANI (YOUTUBE / APP GİRİŞİ) =================
-class ZorunluGirisSayfasi extends StatelessWidget {
-  final bool isDarkMode;
-  final Function(bool) onThemeChanged;
-
-  const ZorunluGirisSayfasi({
-    super.key,
-    required this.isDarkMode,
-    required this.onThemeChanged,
-  });
-
-  Future<void> _googleIleGirisYap(BuildContext context) async {
-    try {
-      if (kIsWeb) {
-        GoogleAuthProvider provider = GoogleAuthProvider();
-        await FirebaseAuth.instance.signInWithPopup(provider);
-      } else {
-        final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
-        final GoogleSignInAuthentication? googleAuth =
-            await googleUser?.authentication;
-        if (googleAuth == null) return;
-        final credential = GoogleAuthProvider.credential(
-          accessToken: googleAuth.accessToken,
-          idToken: googleAuth.idToken,
-        );
-        await FirebaseAuth.instance.signInWithCredential(credential);
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Giriş hatası: $e")),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(Icons.lock_outline,
-                  size: 80, color: Color(0xFF00F0FF)),
-              const SizedBox(height: 20),
-              const Text(
-                "YKS Hane'ye Hoş Geldin",
-                style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                "Devam etmek ve yanlış defterine erişmek için lütfen Google hesabınla oturum aç.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey, fontSize: 13),
-              ),
-              const SizedBox(height: 40),
-              ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black87,
-                  minimumSize: const Size.fromHeight(50),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14)),
-                ),
-                icon: const Text("G",
-                    style: TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF4285F4))),
-                label: const Text("Google ile Oturum Aç",
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                onPressed: () => _googleIleGirisYap(context),
-              ),
-            ],
-          ),
-        ),
+      home: AnaSayfa(
+        isDarkMode: _isDarkMode,
+        onThemeChanged: _temaDegistir,
       ),
     );
   }
@@ -309,7 +202,7 @@ class AnaSayfa extends StatefulWidget {
 
 class _AnaSayfaState extends State<AnaSayfa> {
   int _seciliSekme = 0;
-  String _kullaniciAdi = "Öğrenci";
+  String _kullaniciAdi = "Misafir Ziyaretçi";
   String? _profilResimBase64;
   User? _aktifKullanici;
   bool _isPremium = false;
@@ -317,7 +210,6 @@ class _AnaSayfaState extends State<AnaSayfa> {
 
   final String _adminUID = "Wbs67Nmf43gLQlf9U6n8Ju0xyJE3";
 
-  // Sadece senin gerçek Google hesabın / UID'n veya e-postan admin olabilir
   bool get _isAdmin =>
       (_aktifKullanici?.uid == _adminUID) ||
       (_aktifKullanici?.email?.toLowerCase().contains("roxories") ?? false) ||
@@ -346,8 +238,10 @@ class _AnaSayfaState extends State<AnaSayfa> {
     if (_aktifKullanici != null) {
       _kullaniciAdi = _aktifKullanici!.displayName ??
           (_aktifKullanici!.email?.split('@')[0] ?? "Öğrenci");
+      _verileriBuluttanYukle();
+    } else {
+      _verileriYukle();
     }
-    _verileriBuluttanYukle();
     _aktifDuyurulariKontrolEt();
   }
 
@@ -411,11 +305,88 @@ class _AnaSayfaState extends State<AnaSayfa> {
     }
   }
 
+  Future<void> _googleIleGirisYap() async {
+    try {
+      UserCredential userCredential;
+      if (kIsWeb) {
+        GoogleAuthProvider provider = GoogleAuthProvider();
+        userCredential = await FirebaseAuth.instance.signInWithPopup(provider);
+      } else {
+        final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
+        final GoogleSignInAuthentication? googleAuth =
+            await googleUser?.authentication;
+        if (googleAuth == null) return;
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        userCredential =
+            await FirebaseAuth.instance.signInWithCredential(credential);
+      }
+
+      setState(() {
+        _aktifKullanici = userCredential.user;
+        if (_aktifKullanici?.displayName != null) {
+          _kullaniciAdi = _aktifKullanici!.displayName!;
+        } else if (_aktifKullanici?.email != null) {
+          _kullaniciAdi = _aktifKullanici!.email!.split('@')[0];
+        }
+      });
+
+      await _verileriBuluttanYukle();
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text("Oturum açıldı, hoş geldin $_kullaniciAdi! 🚀")),
+        );
+      }
+    } catch (e) {
+      debugPrint("Giriş hatası: $e");
+    }
+  }
+
   Future<void> _cikisYap() async {
     if (!kIsWeb) {
       await GoogleSignIn().signOut();
     }
     await FirebaseAuth.instance.signOut();
+    setState(() {
+      _aktifKullanici = null;
+      _kullaniciAdi = "Misafir Ziyaretçi";
+      _profilResimBase64 = null;
+      _isPremium = false;
+      _basvuruYapildi = false;
+    });
+    if (mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Oturum kapatıldı.")),
+      );
+    }
+  }
+
+  Future<void> _verileriYukle() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final sorularJson = prefs.getString('yks_sorular_json');
+      if (sorularJson != null) {
+        final List decoded = jsonDecode(sorularJson);
+        setState(() {
+          sorular = decoded.map((e) => SoruModel.fromJson(e)).toList();
+        });
+      }
+      final denemelerJson = prefs.getString('yks_denemeler_json');
+      if (denemelerJson != null) {
+        final List decoded = jsonDecode(denemelerJson);
+        setState(() {
+          denemeler = decoded.map((e) => DenemeModel.fromJson(e)).toList();
+        });
+      }
+    } catch (e) {
+      debugPrint("Yerel veri yükleme hatası: $e");
+    }
   }
 
   Future<void> _verileriBuluttanYukle() async {
@@ -459,29 +430,40 @@ class _AnaSayfaState extends State<AnaSayfa> {
     }
   }
 
-  Future<void> _verileriBulutaKaydet() async {
-    if (_aktifKullanici == null) return;
+  Future<void> _verileriKaydet() async {
     try {
-      final uid = _aktifKullanici!.uid;
-      final dataMap = {
-        'kullaniciAdi': _kullaniciAdi,
-        'profilResimBase64': _profilResimBase64,
-        'isPremium': _isPremium,
-        'basvuruYapildi': _basvuruYapildi,
-        'sorular': sorular.map((e) => e.toJson()).toList(),
-        'denemeler': denemeler.map((e) => e.toJson()).toList(),
-      };
-      await FirebaseFirestore.instance
-          .collection('kullanicilar')
-          .doc(uid)
-          .set(dataMap, SetOptions(merge: true));
+      if (_aktifKullanici != null) {
+        final uid = _aktifKullanici!.uid;
+        final dataMap = {
+          'kullaniciAdi': _kullaniciAdi,
+          'profilResimBase64': _profilResimBase64,
+          'isPremium': _isPremium,
+          'basvuruYapildi': _basvuruYapildi,
+          'sorular': sorular.map((e) => e.toJson()).toList(),
+          'denemeler': denemeler.map((e) => e.toJson()).toList(),
+        };
+        await FirebaseFirestore.instance
+            .collection('kullanicilar')
+            .doc(uid)
+            .set(dataMap, SetOptions(merge: true));
+      } else {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('yks_sorular_json',
+            jsonEncode(sorular.map((e) => e.toJson()).toList()));
+        await prefs.setString('yks_denemeler_json',
+            jsonEncode(denemeler.map((e) => e.toJson()).toList()));
+      }
     } catch (e) {
-      debugPrint("Buluta veri kaydetme hatası: $e");
+      debugPrint("Veri kaydetme hatası: $e");
     }
   }
 
   Future<void> _premiumBasvurusuGonder() async {
-    if (_aktifKullanici == null) return;
+    if (_aktifKullanici == null) {
+      _girisGerekliDialog(
+          "Premium başvurusu yapabilmek için oturum açmalısın!");
+      return;
+    }
     try {
       final uid = _aktifKullanici!.uid;
       final email = _aktifKullanici!.email ?? "E-posta yok";
@@ -500,8 +482,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
       setState(() {
         _basvuruYapildi = true;
       });
-
-      await _verileriBulutaKaydet();
+      await _verileriKaydet();
 
       if (mounted) {
         Navigator.pop(context);
@@ -518,10 +499,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
               ],
             ),
             content: Text(
-              "Başvuru isteğin sistem yöneticisine iletildi.\n\n"
-              "Kullanıcı ID'n: $uid\n"
-              "E-Posta: $email\n\n"
-              "Ödeme onaylandıktan sonra Premium paketiniz doğrudan aktif edilecektir!",
+              "Başvuru isteğin sistem yöneticisine iletildi.\n\nKullanıcı: $_kullaniciAdi\nE-Posta: $email",
               style: const TextStyle(color: Colors.white70, fontSize: 13),
             ),
             actions: [
@@ -542,19 +520,174 @@ class _AnaSayfaState extends State<AnaSayfa> {
     }
   }
 
-  Future<void> _sorulariKaydet() async {
-    await _verileriBulutaKaydet();
-  }
-
-  Future<void> _denemeleriKaydet() async {
-    await _verileriBulutaKaydet();
-  }
-
   void _adminPaneliAc() {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => AdminPaneliSayfasi(isDarkMode: widget.isDarkMode),
+          builder: (_) => AdminPaneliSayfasi(isDarkMode: widget.isDarkMode)),
+    );
+  }
+
+  void _girisGerekliDialog(String mesaj) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: _vurguKirmizi.withOpacity(0.5), width: 1.5),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.lock_outline, color: Color(0xFFFF334B)),
+            SizedBox(width: 8),
+            Text("Oturum Gerekli",
+                style: TextStyle(color: Colors.white, fontSize: 16)),
+          ],
+        ),
+        content: Text(mesaj,
+            style: const TextStyle(color: Colors.white70, fontSize: 13)),
+        actions: [
+          TextButton(
+            child: const Text("İptal", style: TextStyle(color: Colors.grey)),
+            onPressed: () => Navigator.pop(ctx),
+          ),
+          ElevatedButton.icon(
+            style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white, foregroundColor: Colors.black87),
+            icon: const Text("G",
+                style: TextStyle(
+                    fontWeight: FontWeight.w900, color: Color(0xFF4285F4))),
+            label: const Text("Google ile Giriş Yap",
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _googleIleGirisYap();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _youtubeTarziHesapPaneliGoster() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor:
+          widget.isDarkMode ? const Color(0xFF0F172A) : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                  color: Colors.grey[600],
+                  borderRadius: BorderRadius.circular(2)),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: _anaTemaMavi,
+                  backgroundImage: _aktifKullanici?.photoURL != null
+                      ? NetworkImage(_aktifKullanici!.photoURL!)
+                      : (_profilResimBase64 != null
+                          ? MemoryImage(base64Decode(_profilResimBase64!))
+                          : null),
+                  child: (_aktifKullanici?.photoURL == null &&
+                          _profilResimBase64 == null)
+                      ? const Icon(Icons.person, color: Colors.black, size: 30)
+                      : null,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text(
+                            _kullaniciAdi,
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: widget.isDarkMode
+                                  ? Colors.white
+                                  : Colors.black87,
+                            ),
+                          ),
+                          if (_isPremium || _isAdmin) ...[
+                            const SizedBox(width: 6),
+                            Icon(Icons.workspace_premium,
+                                color: _premiumAltin, size: 16),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _aktifKullanici?.email ??
+                            "Misafir Modu (Giriş yapılmadı)",
+                        style: TextStyle(fontSize: 12, color: Colors.grey[400]),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            const Divider(color: Colors.grey),
+            const SizedBox(height: 10),
+            if (_aktifKullanici == null) ...[
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                      color: Colors.blue.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10)),
+                  child: const Icon(Icons.login, color: Color(0xFF4285F4)),
+                ),
+                title: const Text("Google ile Oturum Aç",
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: const Text(
+                    "Sorularını ve netlerini bulutta senkronize et",
+                    style: TextStyle(fontSize: 11, color: Colors.grey)),
+                trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _googleIleGirisYap();
+                },
+              ),
+            ] else ...[
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10)),
+                  child: Icon(Icons.logout, color: _vurguKirmizi),
+                ),
+                title: const Text("Oturumu Kapat",
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                subtitle: const Text("Hesaptan güvenli çıkış yap",
+                    style: TextStyle(fontSize: 11, color: Colors.grey)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _cikisYap();
+                },
+              ),
+            ],
+            const SizedBox(height: 10),
+          ],
+        ),
       ),
     );
   }
@@ -596,8 +729,6 @@ class _AnaSayfaState extends State<AnaSayfa> {
                 Icons.all_inclusive, "Sınırsız Yanlış Soru ve Çözüm Depolama"),
             _premiumOzellikSatiri(
                 Icons.insights, "Gelişmiş Net Grafikleri ve Analizler"),
-            _premiumOzellikSatiri(
-                Icons.cloud_sync, "Öncelikli Bulut Senkronizasyon"),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),
@@ -606,28 +737,16 @@ class _AnaSayfaState extends State<AnaSayfa> {
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: _premiumAltin.withOpacity(0.3)),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text("Aylık Abonelik:",
-                          style: TextStyle(color: Colors.white, fontSize: 12)),
-                      Text("₺49.99 / Ay",
-                          style: TextStyle(
-                              color: _premiumAltin,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14)),
-                    ],
-                  ),
-                  if (_aktifKullanici != null) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                        "Kullanıcı ID: ${_aktifKullanici!.uid.substring(0, 8)}...",
-                        style:
-                            const TextStyle(color: Colors.grey, fontSize: 10)),
-                  ],
+                  const Text("Aylık Abonelik:",
+                      style: TextStyle(color: Colors.white, fontSize: 12)),
+                  Text("₺49.99 / Ay",
+                      style: TextStyle(
+                          color: _premiumAltin,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14)),
                 ],
               ),
             ),
@@ -677,69 +796,6 @@ class _AnaSayfaState extends State<AnaSayfa> {
                     color: Colors.white,
                     fontSize: 12,
                     fontWeight: FontWeight.w500)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _profilBilgiDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor:
-            widget.isDarkMode ? const Color(0xFF0F172A) : Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: _anaTemaMavi.withOpacity(0.4), width: 1.5),
-        ),
-        title: Text(
-          "Google Hesap Bilgileri",
-          style: TextStyle(color: _anaTemaMavi, fontWeight: FontWeight.bold),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircleAvatar(
-              radius: 32,
-              backgroundColor: _anaTemaMavi,
-              backgroundImage: _aktifKullanici?.photoURL != null
-                  ? NetworkImage(_aktifKullanici!.photoURL!)
-                  : null,
-              child: _aktifKullanici?.photoURL == null
-                  ? const Icon(Icons.person, color: Colors.black, size: 28)
-                  : null,
-            ),
-            const SizedBox(height: 12),
-            Text(_kullaniciAdi,
-                style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: Colors.white)),
-            const SizedBox(height: 4),
-            Text(_aktifKullanici?.email ?? '',
-                style: const TextStyle(color: Colors.grey, fontSize: 12)),
-            const SizedBox(height: 20),
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: _vurguKirmizi,
-                side: BorderSide(color: _vurguKirmizi.withOpacity(0.6)),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-              ),
-              icon: const Icon(Icons.logout),
-              label: const Text("Oturumu Kapat"),
-              onPressed: () {
-                Navigator.pop(ctx);
-                _cikisYap();
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            child: const Text("Kapat", style: TextStyle(color: Colors.grey)),
-            onPressed: () => Navigator.pop(ctx),
           ),
         ],
       ),
@@ -823,6 +879,11 @@ class _AnaSayfaState extends State<AnaSayfa> {
   }
 
   void _soruEkleEkraniAc() async {
+    if (_aktifKullanici == null) {
+      _girisGerekliDialog(
+          "Soru ekleyebilmek ve yanlış defterini oluşturabilmek için önce oturum açmalısın!");
+      return;
+    }
     final yeniSoru = await Navigator.push<SoruModel>(
       context,
       MaterialPageRoute(
@@ -836,11 +897,16 @@ class _AnaSayfaState extends State<AnaSayfa> {
       setState(() {
         sorular.add(yeniSoru);
       });
-      await _sorulariKaydet();
+      await _verileriKaydet();
     }
   }
 
   void _denemeEkleEkraniAc() async {
+    if (_aktifKullanici == null) {
+      _girisGerekliDialog(
+          "Deneme sonucu ekleyebilmek için önce oturum açmalısın!");
+      return;
+    }
     final yeniDeneme = await Navigator.push<DenemeModel>(
       context,
       MaterialPageRoute(
@@ -850,7 +916,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
       setState(() {
         denemeler.add(yeniDeneme);
       });
-      await _denemeleriKaydet();
+      await _verileriKaydet();
     }
   }
 
@@ -861,67 +927,50 @@ class _AnaSayfaState extends State<AnaSayfa> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: InkWell(
-          onTap: _profilBilgiDialog,
+          onTap: _youtubeTarziHesapPaneliGoster,
           borderRadius: BorderRadius.circular(12),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: _anaTemaMavi,
-                backgroundImage: _aktifKullanici?.photoURL != null
-                    ? NetworkImage(_aktifKullanici!.photoURL!)
-                    : null,
-                child: _aktifKullanici?.photoURL == null
-                    ? CircleAvatar(
-                        radius: 16,
-                        backgroundColor: widget.isDarkMode
-                            ? const Color(0xFF0F172A)
-                            : Colors.grey[200],
-                        child:
-                            Icon(Icons.person, color: _anaTemaMavi, size: 18),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 8),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        _kullaniciAdi,
-                        style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: widget.isDarkMode
-                                ? Colors.white
-                                : Colors.black87),
-                      ),
-                      if (_isPremium || _isAdmin) ...[
-                        const SizedBox(width: 4),
-                        Icon(Icons.workspace_premium,
-                            color: _premiumAltin, size: 14),
-                      ],
-                    ],
-                  ),
-                  Text(
-                    _isAdmin
-                        ? "SİSTEM YÖNETİCİSİ 👑"
-                        : _isPremium
-                            ? "PREMIUM ÜYE 👑"
-                            : "YKS ÖĞRENCİSİ",
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: widget.isDarkMode
+                  ? const Color(0xFF0F172A)
+                  : Colors.grey[200],
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _anaTemaMavi.withOpacity(0.3)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(
+                  radius: 15,
+                  backgroundColor: _anaTemaMavi,
+                  backgroundImage: _aktifKullanici?.photoURL != null
+                      ? NetworkImage(_aktifKullanici!.photoURL!)
+                      : (_profilResimBase64 != null
+                          ? MemoryImage(base64Decode(_profilResimBase64!))
+                          : null),
+                  child: (_aktifKullanici?.photoURL == null &&
+                          _profilResimBase64 == null)
+                      ? const Icon(Icons.person, color: Colors.black, size: 16)
+                      : null,
+                ),
+                const SizedBox(width: 8),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 120),
+                  child: Text(
+                    _kullaniciAdi,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                        fontSize: 9,
-                        color: (_isPremium || _isAdmin)
-                            ? _premiumAltin
-                            : _anaTemaMavi,
-                        fontWeight: FontWeight.bold),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: widget.isDarkMode ? Colors.white : Colors.black87,
+                    ),
                   ),
-                ],
-              ),
-            ],
+                ),
+                const SizedBox(width: 4),
+                Icon(Icons.arrow_drop_down, color: _anaTemaMavi, size: 18),
+              ],
+            ),
           ),
         ),
         actions: [
@@ -1240,7 +1289,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
                                               sorular
                                                   .addAll(guncellenmisSorular);
                                             });
-                                            await _sorulariKaydet();
+                                            await _verileriKaydet();
                                           },
                                           isDarkMode: widget.isDarkMode,
                                           isPremium: _isPremium,
@@ -1252,7 +1301,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
                                   },
                                 ),
                               );
-                            }).toList(),
+                            }),
                             const SizedBox(height: 20),
                             Center(
                               child: Text(
@@ -1286,7 +1335,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
                                     setState(() {
                                       sorular.removeWhere((s) => s.id == id);
                                     });
-                                    _sorulariKaydet();
+                                    _verileriKaydet();
                                   },
                                   isDarkMode: widget.isDarkMode,
                                 ),
@@ -1300,7 +1349,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
                                     setState(() {
                                       denemeler.removeWhere((d) => d.id == id);
                                     });
-                                    _denemeleriKaydet();
+                                    _verileriKaydet();
                                   },
                                   isDarkMode: widget.isDarkMode,
                                 ),
@@ -1418,7 +1467,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
   }
 }
 
-// ================= GÜÇLENDİRİLMİŞ PROFESYONEL ADMIN PANELİ =================
+// ================= ADMIN PANELİ =================
 class AdminPaneliSayfasi extends StatefulWidget {
   final bool isDarkMode;
   const AdminPaneliSayfasi({super.key, required this.isDarkMode});
@@ -1841,8 +1890,7 @@ class OgrenciSoruIncelemeSayfasi extends StatelessWidget {
       body: sorular.isEmpty
           ? const Center(
               child: Text("Bu öğrenci henüz soru yüklememiş.",
-                  style: TextStyle(color: Colors.grey)),
-            )
+                  style: TextStyle(color: Colors.grey)))
           : ListView.builder(
               padding: const EdgeInsets.all(16),
               itemCount: sorular.length,
@@ -2149,8 +2197,7 @@ class _ZamanlayiciVeKronometreSekmesiState
                     labelText: "Özel Dakika Girin",
                     hintText: "Örn: 35",
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
+                        borderRadius: BorderRadius.circular(10)),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide(
