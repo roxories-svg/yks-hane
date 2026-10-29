@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:yks_yanlis_defteri/main.dart';
+import 'package:yks_yanlis_defteri/gemini_service.dart';
 
 void main() {
   test('SoruModel JSON round trip', () {
@@ -23,5 +24,17 @@ void main() {
     expect(restored.cozumResimBase64, soru.cozumResimBase64);
     expect(restored.cozuldu, true);
     expect(restored.tekrarAraligiGun, 5);
+  });
+
+  test('Normal sohbet metni soru olarak siniflandirilmaz', () {
+    expect(GeminiYksService.isCasualChat('Selam'), isTrue);
+    expect(GeminiYksService.isCasualChat('Merhaba, nasılsın?'), isTrue);
+    expect(GeminiYksService.isCasualChat('Teşekkürler'), isTrue);
+  });
+
+  test('Gercek soru metni sohbet olarak siniflandirilmaz', () {
+    expect(GeminiYksService.isCasualChat('2x + 4 = 10 ise x kaçtır?'), isFalse);
+    expect(GeminiYksService.isCasualChat('Türevin geometrik anlamı nedir?'),
+        isFalse);
   });
 }

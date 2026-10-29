@@ -33,6 +33,10 @@ migrate_working_dir/
 /build/
 /coverage/
 
+# Yerel API anahtarlari (Git'e eklenmez)
+gemini.local.json
+lib/generated_gemini_config.dart
+
 # Symbolication related
 app.*.symbols
 

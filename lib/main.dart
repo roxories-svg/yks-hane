@@ -10,9 +10,9 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:http/http.dart' as http;
-import 'hedef_odasi.dart';
 import 'siniflar.dart';
+import 'yks_ai_asistan.dart';
+import 'gemini_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,6 +28,9 @@ void main() async {
         appId: "1:655065330053:web:2023292c06d0cc6f04d4ec",
       ),
     );
+    if (kIsWeb) {
+      await FirebaseAuth.instance.setPersistence(Persistence.LOCAL);
+    }
   } catch (e, stack) {
     debugPrint("Firebase başlatma hatası: $e");
     debugPrint("Firebase stack: $stack");
@@ -86,16 +89,22 @@ class _YKSYanlisDefterimAppState extends State<YKSYanlisDefterimApp> {
       debugShowCheckedModeBanner: false,
       theme: _isDarkMode
           ? ThemeData.dark().copyWith(
+              useMaterial3: true,
               scaffoldBackgroundColor: const Color(0xFF030712),
               primaryColor: const Color(0xFF00F0FF),
               colorScheme: const ColorScheme.dark(
                 primary: Color(0xFF00F0FF),
-                secondary: Color(0xFFFF334B),
+                secondary: Color(0xFFA855F7),
                 surface: Color(0xFF0F172A),
               ),
               cardColor: const Color(0xFF0F172A),
+              appBarTheme: const AppBarTheme(
+                backgroundColor: Color(0xFF030712),
+                surfaceTintColor: Colors.transparent,
+              ),
             )
           : ThemeData.light().copyWith(
+              useMaterial3: true,
               scaffoldBackgroundColor: const Color(0xFFF4F7FC),
               primaryColor: const Color(0xFF0066FF),
               colorScheme: const ColorScheme.light(
@@ -151,9 +160,12 @@ class SoruModel {
         konu: json['konu'] ?? '',
         soruResimBase64: json['soruResimBase64'] ?? json['soruResimYolu'] ?? '',
         cozumResimBase64: json['cozumResimBase64'] ?? json['cozumResimYolu'],
-        eklenmeTarihi: json['eklenmeTarihi'] != null
-            ? DateTime.parse(json['eklenmeTarihi'])
-            : DateTime.now(),
+        eklenmeTarihi: json['eklenmeTarihi'] is String
+            ? (DateTime.tryParse(json['eklenmeTarihi'] as String) ??
+                DateTime.now())
+            : json['eklenmeTarihi'] is Timestamp
+                ? (json['eklenmeTarihi'] as Timestamp).toDate()
+                : DateTime.now(),
         cozuldu: json['cozuldu'] ?? false,
         tekrarAraligiGun: json['tekrarAraligiGun'] ?? 3,
       );
@@ -194,9 +206,11 @@ class DenemeModel {
   factory DenemeModel.fromJson(Map<String, dynamic> json) => DenemeModel(
         id: json['id'] ?? '',
         denemeAdi: json['denemeAdi'] ?? 'Deneme',
-        tarih: json['tarih'] != null
-            ? DateTime.parse(json['tarih'])
-            : DateTime.now(),
+        tarih: json['tarih'] is String
+            ? (DateTime.tryParse(json['tarih'] as String) ?? DateTime.now())
+            : json['tarih'] is Timestamp
+                ? (json['tarih'] as Timestamp).toDate()
+                : DateTime.now(),
         turkceNet: (json['turkceNet'] as num?)?.toDouble() ?? 0.0,
         sosyalNet: (json['sosyalNet'] as num?)?.toDouble() ?? 0.0,
         matNet: (json['matNet'] as num?)?.toDouble() ?? 0.0,
@@ -405,7 +419,10 @@ class YKSHaneProfilSayfasi extends StatelessWidget {
   }
 
   Widget _ayarSatiri(IconData icon, String title, String subtitle,
-      {bool yakinda = false, bool premium = false, VoidCallback? onTap}) {
+      {bool yakinda = false,
+      bool premium = false,
+      bool bakimda = false,
+      VoidCallback? onTap}) {
     return ListTile(
       leading: Container(
           width: 42,
@@ -419,6 +436,21 @@ class YKSHaneProfilSayfasi extends StatelessWidget {
       subtitle: Text(subtitle,
           style: const TextStyle(color: Colors.grey, fontSize: 11)),
       trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+        if (bakimda) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF334B),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text('BAKIMDA',
+                style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900)),
+          ),
+          const SizedBox(width: 6),
+        ],
         if (premium) ...[
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
@@ -566,7 +598,7 @@ class YKSHaneProfilSayfasi extends StatelessWidget {
               onTap: onAdmin),
         _ayarSatiri(Icons.local_library_outlined,
             'Hedef Odası / Sanal Kütüphane', 'Gerçek zamanlı çalışma masaları',
-            premium: true, onTap: onTargetRoom),
+            premium: false, bakimda: true, onTap: onTargetRoom),
         _ayarSatiri(Icons.school_outlined, 'Sınav Tercihleri',
             'Alan ve hedef seçimini düzenle',
             yakinda: true),
@@ -645,6 +677,10 @@ class _AnaSayfaState extends State<AnaSayfa> {
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
       _profilSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _yanlisSorularSubscription;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>?
+      _denemelerSubscription;
   String? _sonAktifUid;
   bool _authIsBusy = false;
   int _authIslemNo = 0;
@@ -668,6 +704,12 @@ class _AnaSayfaState extends State<AnaSayfa> {
       _sonAktifUid = user?.uid;
       final int islemNo = ++_authIslemNo;
       if (!mounted) return;
+      await _profilSubscription?.cancel();
+      await _yanlisSorularSubscription?.cancel();
+      await _denemelerSubscription?.cancel();
+      _profilSubscription = null;
+      _yanlisSorularSubscription = null;
+      _denemelerSubscription = null;
       setState(() {
         _aktifKullanici = user;
         _kullaniciAdi = user?.displayName ??
@@ -691,6 +733,8 @@ class _AnaSayfaState extends State<AnaSayfa> {
   void dispose() {
     _authSubscription?.cancel();
     _profilSubscription?.cancel();
+    _yanlisSorularSubscription?.cancel();
+    _denemelerSubscription?.cancel();
     super.dispose();
   }
 
@@ -764,6 +808,10 @@ class _AnaSayfaState extends State<AnaSayfa> {
     _authIsBusy = true;
     await _profilSubscription?.cancel();
     _profilSubscription = null;
+    await _yanlisSorularSubscription?.cancel();
+    _yanlisSorularSubscription = null;
+    await _denemelerSubscription?.cancel();
+    _denemelerSubscription = null;
     if (mounted) {
       setState(() {
         _aktifKullanici = null;
@@ -841,6 +889,8 @@ class _AnaSayfaState extends State<AnaSayfa> {
     try {
       final uid = _aktifKullanici!.uid;
       await _profilSubscription?.cancel();
+      await _yanlisSorularSubscription?.cancel();
+      await _denemelerSubscription?.cancel();
       _profilSubscription = FirebaseFirestore.instance
           .collection('kullanicilar')
           .doc(uid)
@@ -849,9 +899,47 @@ class _AnaSayfaState extends State<AnaSayfa> {
         final data = snapshot.data();
         if (!mounted || data == null) return;
         final value = data['roxCoin'];
-        if (value is num && mounted) {
-          setState(() => _roxCoin = value.toInt());
-        }
+        setState(() {
+          if (value is num) _roxCoin = value.toInt();
+        });
+      });
+      _yanlisSorularSubscription = FirebaseFirestore.instance
+          .collection('kullanicilar')
+          .doc(uid)
+          .collection('yanlis_sorular')
+          .orderBy('eklenmeTarihi', descending: true)
+          .snapshots()
+          .listen((snapshot) {
+        if (!mounted || FirebaseAuth.instance.currentUser?.uid != uid) return;
+        setState(() {
+          sorular = snapshot.docs
+              .map((doc) => SoruModel.fromJson({
+                    ...doc.data(),
+                    'id': doc.data()['id']?.toString().isNotEmpty == true
+                        ? doc.data()['id'].toString()
+                        : doc.id,
+                  }))
+              .toList();
+        });
+      });
+      _denemelerSubscription = FirebaseFirestore.instance
+          .collection('kullanicilar')
+          .doc(uid)
+          .collection('denemeler')
+          .orderBy('tarih', descending: true)
+          .snapshots()
+          .listen((snapshot) {
+        if (!mounted || FirebaseAuth.instance.currentUser?.uid != uid) return;
+        setState(() {
+          denemeler = snapshot.docs
+              .map((doc) => DenemeModel.fromJson({
+                    ...doc.data(),
+                    'id': doc.data()['id']?.toString().isNotEmpty == true
+                        ? doc.data()['id'].toString()
+                        : doc.id,
+                  }))
+              .toList();
+        });
       });
       final doc = await FirebaseFirestore.instance
           .collection('kullanicilar')
@@ -883,22 +971,130 @@ class _AnaSayfaState extends State<AnaSayfa> {
           if (data['roxCoin'] is num) {
             _roxCoin = (data['roxCoin'] as num).toInt();
           }
-          if (data['sorular'] != null) {
-            final List list = data['sorular'];
-            sorular = list.map((e) => SoruModel.fromJson(e)).toList();
-          }
-          if (data['denemeler'] != null) {
-            final List list = data['denemeler'];
-            denemeler = list.map((e) => DenemeModel.fromJson(e)).toList();
-          }
         });
+        final eskiSorular = data['sorular'];
+        if (eskiSorular is List && eskiSorular.isNotEmpty) {
+          final batch = FirebaseFirestore.instance.batch();
+          final collection = FirebaseFirestore.instance
+              .collection('kullanicilar')
+              .doc(uid)
+              .collection('yanlis_sorular');
+          for (final raw in eskiSorular) {
+            if (raw is! Map) continue;
+            final soru = SoruModel.fromJson(Map<String, dynamic>.from(raw));
+            final id = soru.id.isNotEmpty
+                ? soru.id
+                : 'soru_${DateTime.now().millisecondsSinceEpoch}_${batch.hashCode}';
+            batch.set(
+                collection.doc(id),
+                {
+                  ...soru.toJson(),
+                  'id': id,
+                  'uid': uid,
+                  'guncellenmeTarihi': FieldValue.serverTimestamp(),
+                },
+                SetOptions(merge: true));
+          }
+          await batch.commit();
+        }
+        final eskiDenemeler = data['denemeler'];
+        if (eskiDenemeler is List && eskiDenemeler.isNotEmpty) {
+          final batch = FirebaseFirestore.instance.batch();
+          final collection = FirebaseFirestore.instance
+              .collection('kullanicilar')
+              .doc(uid)
+              .collection('denemeler');
+          for (final raw in eskiDenemeler) {
+            if (raw is! Map) continue;
+            final deneme = DenemeModel.fromJson(Map<String, dynamic>.from(raw));
+            final id = deneme.id.isNotEmpty
+                ? deneme.id
+                : 'deneme_${DateTime.now().millisecondsSinceEpoch}_${batch.hashCode}';
+            batch.set(
+                collection.doc(id),
+                {
+                  ...deneme.toJson(),
+                  'id': id,
+                  'uid': uid,
+                  'guncellenmeTarihi': FieldValue.serverTimestamp(),
+                },
+                SetOptions(merge: true));
+          }
+          await batch.commit();
+        }
       }
     } catch (e) {
       debugPrint("Buluttan veri çekme hatası: $e");
     }
   }
 
-  Future<void> _verileriKaydet() async {
+  Future<void> _yanlisSoruyuFirestoreKaydet(SoruModel soru) async {
+    final uid = _aktifKullanici?.uid;
+    if (uid == null) return;
+    await FirebaseFirestore.instance
+        .collection('kullanicilar')
+        .doc(uid)
+        .collection('yanlis_sorular')
+        .doc(soru.id)
+        .set({
+      ...soru.toJson(),
+      'uid': uid,
+      'guncellenmeTarihi': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> _denemeyiFirestoreKaydet(DenemeModel deneme) async {
+    final uid = _aktifKullanici?.uid;
+    if (uid == null) return;
+    await FirebaseFirestore.instance
+        .collection('kullanicilar')
+        .doc(uid)
+        .collection('denemeler')
+        .doc(deneme.id)
+        .set({
+      ...deneme.toJson(),
+      'uid': uid,
+      'guncellenmeTarihi': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+  }
+
+  Future<void> _yanlisSoruyuFirestoreSil(String id) async {
+    final uid = _aktifKullanici?.uid;
+    if (uid == null) return;
+    await FirebaseFirestore.instance
+        .collection('kullanicilar')
+        .doc(uid)
+        .collection('yanlis_sorular')
+        .doc(id)
+        .delete();
+  }
+
+  Future<void> _denemeyiFirestoreSil(String id) async {
+    final uid = _aktifKullanici?.uid;
+    if (uid == null) return;
+    await FirebaseFirestore.instance
+        .collection('kullanicilar')
+        .doc(uid)
+        .collection('denemeler')
+        .doc(id)
+        .delete();
+  }
+
+  Future<bool> _verileriKaydet() async {
+    Future<void> yerelKaydet() async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('yks_sorular_json',
+          jsonEncode(sorular.map((e) => e.toJson()).toList()));
+      await prefs.setString('yks_denemeler_json',
+          jsonEncode(denemeler.map((e) => e.toJson()).toList()));
+      await prefs.setString('profil_kullanici_adi', _kullaniciAdi);
+      if (_profilResimBase64 != null) {
+        await prefs.setString('profil_resim_base64', _profilResimBase64!);
+      } else {
+        await prefs.remove('profil_resim_base64');
+      }
+    }
+
     try {
       if (_aktifKullanici != null) {
         final uid = _aktifKullanici!.uid;
@@ -907,31 +1103,116 @@ class _AnaSayfaState extends State<AnaSayfa> {
           'profilResimBase64': _profilResimBase64,
           'isPremium': _isPremium,
           'basvuruYapildi': _basvuruYapildi,
-          'roxCoin': _roxCoin,
-          'sorular': sorular.map((e) => e.toJson()).toList(),
-          'denemeler': denemeler.map((e) => e.toJson()).toList(),
+          'guncellenmeTarihi': FieldValue.serverTimestamp(),
         };
-        await FirebaseFirestore.instance
-            .collection('kullanicilar')
-            .doc(uid)
-            .set(dataMap, SetOptions(merge: true));
+        Object? lastError;
+        for (var attempt = 0; attempt < 3; attempt++) {
+          try {
+            await FirebaseFirestore.instance
+                .collection('kullanicilar')
+                .doc(uid)
+                .set(dataMap, SetOptions(merge: true));
+            lastError = null;
+            break;
+          } catch (error) {
+            lastError = error;
+            if (attempt < 2) {
+              await Future<void>.delayed(
+                  Duration(milliseconds: 300 * (attempt + 1)));
+            }
+          }
+        }
+        if (lastError != null) throw lastError;
+
+        Future<void> kayitAltBelgeleriniEsenkronizeEt({
+          required String collectionName,
+          required List<Map<String, dynamic>> records,
+          required String idPrefix,
+        }) async {
+          final collection = FirebaseFirestore.instance
+              .collection('kullanicilar')
+              .doc(uid)
+              .collection(collectionName);
+          final existing = await collection.get();
+          final allowedIds = <String>{};
+          var batch = FirebaseFirestore.instance.batch();
+          var writes = 0;
+          Future<void> commitIfNeeded() async {
+            if (writes == 0) return;
+            await batch.commit();
+            batch = FirebaseFirestore.instance.batch();
+            writes = 0;
+          }
+
+          for (var i = 0; i < records.length; i++) {
+            final record = records[i];
+            final rawId = record['id']?.toString().trim();
+            final id =
+                rawId != null && rawId.isNotEmpty ? rawId : '$idPrefix$i';
+            allowedIds.add(id);
+            batch.set(
+                collection.doc(id),
+                {
+                  ...record,
+                  'id': id,
+                  'uid': uid,
+                  'guncellenmeTarihi': FieldValue.serverTimestamp(),
+                },
+                SetOptions(merge: true));
+            writes++;
+            if (writes >= 400) await commitIfNeeded();
+          }
+          for (final old in existing.docs) {
+            if (!allowedIds.contains(old.id)) {
+              batch.delete(old.reference);
+              writes++;
+              if (writes >= 400) await commitIfNeeded();
+            }
+          }
+          await commitIfNeeded();
+        }
+
+        Object? altBelgeHatasi;
+        for (var attempt = 0; attempt < 3; attempt++) {
+          try {
+            await kayitAltBelgeleriniEsenkronizeEt(
+              collectionName: 'yanlis_sorular',
+              records: sorular.map((e) => e.toJson()).toList(),
+              idPrefix: 'soru_',
+            );
+            await kayitAltBelgeleriniEsenkronizeEt(
+              collectionName: 'denemeler',
+              records: denemeler.map((e) => e.toJson()).toList(),
+              idPrefix: 'deneme_',
+            );
+            altBelgeHatasi = null;
+            break;
+          } catch (error) {
+            altBelgeHatasi = error;
+            if (attempt < 2) {
+              await Future<void>.delayed(
+                  Duration(milliseconds: 400 * (attempt + 1)));
+            }
+          }
+        }
+        if (altBelgeHatasi != null) throw altBelgeHatasi;
       } else {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('yks_sorular_json',
-            jsonEncode(sorular.map((e) => e.toJson()).toList()));
-        await prefs.setString('yks_denemeler_json',
-            jsonEncode(denemeler.map((e) => e.toJson()).toList()));
+        await yerelKaydet();
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('profil_kullanici_adi', _kullaniciAdi);
-      if (_profilResimBase64 != null) {
-        await prefs.setString('profil_resim_base64', _profilResimBase64!);
-      } else {
-        await prefs.remove('profil_resim_base64');
-      }
+      await yerelKaydet();
+      return true;
     } catch (e) {
       debugPrint("Veri kaydetme hatası: $e");
+      await yerelKaydet();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: const Text(
+              'Buluta kayıt başarısız oldu. İnternet bağlantınızı kontrol edip tekrar deneyin.'),
+          backgroundColor: const Color(0xFFFF334B),
+        ));
+      }
+      return false;
     }
   }
 
@@ -1375,26 +1656,26 @@ class _AnaSayfaState extends State<AnaSayfa> {
   }
 
   void _hedefOdasiniAc() {
-    if (_aktifKullanici == null) {
-      _girisBottomSheetGoster();
-      return;
-    }
-    if (!_isPremium) {
-      _premiumModalGoster();
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => HedefOdasiSayfasi(
-          isDarkMode: widget.isDarkMode,
-          user: _aktifKullanici,
-          kullaniciAdi: _kullaniciAdi,
-          profilResimBase64: _profilResimBase64,
-          isPremium: _isPremium,
-          onLogin: _girisBottomSheetGoster,
-          onPremium: _premiumModalGoster,
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: const Color(0xFFB91C1C),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 18),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        content: const Row(
+          children: [
+            Icon(Icons.build_circle_rounded, color: Colors.white),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'Hedef Odası şu anda bakımdadır, yakında tekrar açılacaktır!',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
         ),
+        duration: const Duration(seconds: 4),
       ),
     );
   }
@@ -1493,6 +1774,16 @@ class _AnaSayfaState extends State<AnaSayfa> {
     );
   }
 
+  void _aiAsistanAc() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => YksAiAsistanSayfasi(isDarkMode: widget.isDarkMode),
+    );
+  }
+
   void _soruEkleEkraniAc() async {
     if (_aktifKullanici == null) {
       _girisGerekliDialog(
@@ -1509,16 +1800,19 @@ class _AnaSayfaState extends State<AnaSayfa> {
       ),
     );
     if (yeniSoru != null) {
+      final uid = _aktifKullanici?.uid;
+      if (uid == null) return;
       setState(() {
         sorular.add(yeniSoru);
         _roxCoin += 5;
       });
       await FirebaseFirestore.instance
           .collection('kullanicilar')
-          .doc(_aktifKullanici!.uid)
+          .doc(uid)
           .set(<String, dynamic>{
         'roxCoin': FieldValue.increment(5),
       }, SetOptions(merge: true));
+      await _yanlisSoruyuFirestoreKaydet(yeniSoru);
       await _verileriKaydet();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -1543,6 +1837,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
       setState(() {
         denemeler.add(yeniDeneme);
       });
+      await _denemeyiFirestoreKaydet(yeniDeneme);
       await _verileriKaydet();
     }
   }
@@ -1622,8 +1917,30 @@ class _AnaSayfaState extends State<AnaSayfa> {
           IconButton(
             tooltip: 'Hedef Odası',
             onPressed: _hedefOdasiniAc,
-            icon: const Icon(Icons.local_library_outlined,
-                color: Color(0xFF00F0FF)),
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.local_library_outlined,
+                    color: Color(0xFF00F0FF)),
+                Positioned(
+                  right: -8,
+                  top: -8,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFF334B),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text('BAKIMDA',
+                        style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 7,
+                            fontWeight: FontWeight.w900)),
+                  ),
+                ),
+              ],
+            ),
           ),
           Center(
             child: Padding(
@@ -1712,97 +2029,13 @@ class _AnaSayfaState extends State<AnaSayfa> {
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(20),
-                              child: Container(
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [
-                                      Color(0xFF0F172A),
-                                      Color(0xFF1E1B4B),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                  ),
-                                  border: Border.all(
-                                    color: _vurguKirmizi.withOpacity(0.8),
-                                    width: 2,
-                                  ),
-                                  borderRadius: BorderRadius.circular(20),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: _vurguKirmizi.withOpacity(0.35),
-                                      blurRadius: 18,
-                                      offset: const Offset(0, 6),
-                                    ),
-                                    BoxShadow(
-                                      color: _anaTemaMavi.withOpacity(0.2),
-                                      blurRadius: 12,
-                                      offset: const Offset(0, -2),
-                                    ),
-                                  ],
-                                ),
-                                child: AspectRatio(
-                                  aspectRatio: 21 / 9,
-                                  child: Stack(
-                                    fit: StackFit.expand,
-                                    children: [
-                                      Image.asset(
-                                        'assets/banner.png',
-                                        fit: BoxFit.cover,
-                                      ),
-                                      Container(
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            colors: [
-                                              Colors.black.withOpacity(0.6),
-                                              Colors.transparent,
-                                            ],
-                                            begin: Alignment.centerLeft,
-                                            end: Alignment.centerRight,
-                                          ),
-                                        ),
-                                      ),
-                                      Positioned(
-                                        left: 16,
-                                        bottom: 16,
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Container(
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 3),
-                                              decoration: BoxDecoration(
-                                                color: _vurguKirmizi,
-                                                borderRadius:
-                                                    BorderRadius.circular(6),
-                                              ),
-                                              child: const Text(
-                                                "YKS 2027 ÖZEL",
-                                                style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 9,
-                                                    fontWeight:
-                                                        FontWeight.bold),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 6),
-                                            const Text(
-                                              "Zirveyi Hedefle.",
-                                              style: TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 18,
-                                                fontWeight: FontWeight.bold,
-                                                letterSpacing: 1.1,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                              child: AspectRatio(
+                                aspectRatio: 1983 / 793,
+                                child: Image.asset(
+                                  'assets/images/29ekim.png',
+                                  width: double.infinity,
+                                  fit: BoxFit.cover,
+                                  filterQuality: FilterQuality.high,
                                 ),
                               ),
                             ),
@@ -1892,6 +2125,11 @@ class _AnaSayfaState extends State<AnaSayfa> {
                                               sorular
                                                   .addAll(guncellenmisSorular);
                                             });
+                                            for (final soru
+                                                in guncellenmisSorular) {
+                                              await _yanlisSoruyuFirestoreKaydet(
+                                                  soru);
+                                            }
                                             await _verileriKaydet();
                                           },
                                           isDarkMode: widget.isDarkMode,
@@ -1938,6 +2176,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
                                     setState(() {
                                       sorular.removeWhere((s) => s.id == id);
                                     });
+                                    _yanlisSoruyuFirestoreSil(id);
                                     _verileriKaydet();
                                   },
                                   isDarkMode: widget.isDarkMode,
@@ -1963,6 +2202,7 @@ class _AnaSayfaState extends State<AnaSayfa> {
                                           denemeler
                                               .removeWhere((d) => d.id == id);
                                         });
+                                        _denemeyiFirestoreSil(id);
                                         _verileriKaydet();
                                       },
                                       isDarkMode: widget.isDarkMode,
@@ -2049,6 +2289,18 @@ class _AnaSayfaState extends State<AnaSayfa> {
                   ),
                 ),
               ),
+            ),
+          ),
+          Positioned(
+            right: 16,
+            bottom: 92,
+            child: FloatingActionButton.small(
+              heroTag: 'yksAiAsistanFab',
+              backgroundColor: const Color(0xFFA855F7),
+              foregroundColor: Colors.white,
+              tooltip: 'YKS AI Soru Çözücü',
+              onPressed: _aiAsistanAc,
+              child: const Icon(Icons.auto_awesome_rounded),
             ),
           ),
         ],
@@ -3778,54 +4030,35 @@ class _DersSorulariSayfasiState extends State<DersSorulariSayfasi> {
       ),
     );
 
+    String? aiYanit;
+    Object? hata;
     try {
-      const apiKey = "AQ.Ab8RN6KPclBuFtt8C7F1lo71dN5kR7xKs2_5_JPC0w8L2coSmQ";
-      final url = Uri.parse(
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey');
-
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          "contents": [
-            {
-              "parts": [
-                {
-                  "text":
-                      "Sen uzman bir YKS koçu ve öğretmenisin. Bu gönderilen soru fotoğrafını dikkatle incele. Öğrenciye soruyu çözdürmeden, çözümün ana mantığını, dikkat etmesi gereken püf noktalarını ve izlemesi gereken adımları içeren kısa, anlaşılır ve motive edici bir ipucu / rehberlik hazırla."
-                },
-                {
-                  "inline_data": {
-                    "mime_type": "image/jpeg",
-                    "data": soru.soruResimBase64
-                  }
-                }
-              ]
-            }
-          ]
-        }),
+      final aiService = GeminiYksService();
+      aiYanit = await aiService.ask(
+        prompt:
+            'Bu YKS sorusunu incele. Ders: ${soru.ders}. Konu: ${soru.konu}. '
+            'Öğrenciye soruyu çözdürmeden ana mantığı, püf noktalarını ve '
+            'izlemesi gereken adımları içeren kısa, anlaşılır ve motive edici bir ipucu ver.',
+        imageBytes: soru.soruResimBase64.isNotEmpty
+            ? base64Decode(soru.soruResimBase64)
+            : null,
+        imageMimeType: 'image/jpeg',
       );
-
-      if (mounted) Navigator.pop(context);
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        final aiYanit = data['candidates']?[0]?['content']?['parts']?[0]
-                ?['text'] ??
-            "Yapay zekâ yanıt üretemedi.";
-
-        if (mounted) _aiSonucDialogGoster(soru, aiYanit);
-      } else {
-        if (mounted) {
-          _aiSonucDialogGoster(
-              soru, "API Bağlantı Hatası: ${response.statusCode}");
-        }
-      }
     } catch (e) {
+      hata = e;
+    } finally {
       if (mounted) {
         Navigator.pop(context);
-        _aiSonucDialogGoster(soru, "Bağlantı hatası oluştu: $e");
       }
+    }
+
+    if (mounted) {
+      _aiSonucDialogGoster(
+        soru,
+        hata != null
+            ? 'Bağlantı hatası oluştu. İnternet bağlantını veya Gemini API yapılandırmasını kontrol edip tekrar dene.\n\nDetay: ${hata.toString().replaceFirst("StateError: ", "")}'
+            : aiYanit ?? 'Bir yanıt alınamadı. Lütfen tekrar dene.',
+      );
     }
   }
 

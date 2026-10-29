@@ -500,6 +500,7 @@ class SinifOdasiSayfasi extends StatefulWidget {
 class _SinifOdasiSayfasiState extends State<SinifOdasiSayfasi> {
   final TextEditingController _generalMessage = TextEditingController();
   Timer? _presenceTimer;
+  bool _chatOpen = false;
 
   CollectionReference<Map<String, dynamic>> get _generalMessages =>
       FirebaseFirestore.instance
@@ -568,40 +569,105 @@ class _SinifOdasiSayfasiState extends State<SinifOdasiSayfasi> {
   Future<void> _sendGeneral() async {
     final text = _generalMessage.text.trim();
     if (text.isEmpty || widget.user == null) return;
-    await _generalMessages.add({
-      'senderId': widget.user!.uid,
-      'senderName': widget.userName,
-      'text': text,
-      'createdAt': Timestamp.now()
-    });
-    _generalMessage.clear();
+    try {
+      await _generalMessages.add({
+        'senderId': widget.user!.uid,
+        'senderName': widget.userName,
+        'text': text,
+        'createdAt': Timestamp.now()
+      });
+      _generalMessage.clear();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Mesaj gönderilemedi. Bağlantınızı kontrol edin.'),
+        backgroundColor: Color(0xFFFF334B),
+      ));
+    }
   }
 
   Future<void> _sit(
       DocumentSnapshot<Map<String, dynamic>> table, int seatIndex) async {
     if (widget.user == null) return;
     final uid = widget.user!.uid;
+    final tableSnapshots = await _tables.get();
+    final otherClassSnapshots =
+        await FirebaseFirestore.instance.collectionGroup('tables').get();
+    final uniqueTables = <String, DocumentSnapshot<Map<String, dynamic>>>{};
+    for (final snapshot in [
+      ...tableSnapshots.docs,
+      ...otherClassSnapshots.docs
+    ]) {
+      uniqueTables[snapshot.reference.path] = snapshot;
+    }
     await FirebaseFirestore.instance.runTransaction((transaction) async {
-      final snap = await transaction.get(table.reference);
-      final rawSeats = snap.data()?['seats'];
-      final seats = rawSeats is Iterable
-          ? rawSeats
+      final snapshots = <DocumentSnapshot<Map<String, dynamic>>>[];
+      for (final existingTable in uniqueTables.values) {
+        snapshots.add(await transaction.get(existingTable.reference));
+      }
+
+      for (final snap in snapshots) {
+        final rawSeats = snap.data()?['seats'];
+        final seats = rawSeats is Iterable
+            ? rawSeats
+                .map((e) => e is Map
+                    ? Map<String, dynamic>.from(e)
+                    : <String, dynamic>{})
+                .toList()
+            : <Map<String, dynamic>>[];
+        while (seats.length < 2) {
+          seats.add(<String, dynamic>{});
+        }
+
+        var changed = false;
+        for (var i = 0; i < seats.length; i++) {
+          if (seats[i]['userId']?.toString() == uid &&
+              snap.reference.id != table.id) {
+            seats[i] = <String, dynamic>{};
+            changed = true;
+          }
+        }
+
+        if (changed) {
+          transaction.update(snap.reference, {
+            'seats': seats,
+            'isOccupied': seats
+                .any((seat) => seat['userId']?.toString().isNotEmpty == true),
+          });
+        }
+      }
+
+      final targetSnapshot = await transaction.get(table.reference);
+      final rawTargetSeats = targetSnapshot.data()?['seats'];
+      final targetSeats = rawTargetSeats is Iterable
+          ? rawTargetSeats
               .map((e) =>
                   e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{})
               .toList()
           : <Map<String, dynamic>>[];
-      while (seats.length < 2) seats.add(<String, dynamic>{});
-      for (int i = 0; i < seats.length; i++)
-        if (seats[i]['userId'] == uid) seats[i] = <String, dynamic>{};
-      if (seats[seatIndex]['userId']?.toString().isNotEmpty == true)
+      while (targetSeats.length < 2) {
+        targetSeats.add(<String, dynamic>{});
+      }
+
+      for (var i = 0; i < targetSeats.length; i++) {
+        if (targetSeats[i]['userId']?.toString() == uid && i != seatIndex) {
+          targetSeats[i] = <String, dynamic>{};
+        }
+      }
+      if (targetSeats[seatIndex]['userId']?.toString().isNotEmpty == true) {
         throw Exception('Bu koltuk dolu.');
-      seats[seatIndex] = {
+      }
+
+      targetSeats[seatIndex] = {
         'userId': uid,
         'userName': widget.userName,
         'photoBase64': widget.profilResimBase64,
-        'startedAt': Timestamp.now()
+        'startedAt': Timestamp.now(),
       };
-      transaction.update(table.reference, {'seats': seats, 'isOccupied': true});
+      transaction.update(table.reference, {
+        'seats': targetSeats,
+        'isOccupied': true,
+      });
     });
   }
 
@@ -625,7 +691,9 @@ class _SinifOdasiSayfasiState extends State<SinifOdasiSayfasi> {
           changed = true;
         }
       }
-      if (changed) batch.update(table.reference, {'seats': seats});
+      if (changed) {
+        batch.update(table.reference, {'seats': seats, 'isOccupied': false});
+      }
     }
     await batch.commit();
   }
@@ -641,76 +709,133 @@ class _SinifOdasiSayfasiState extends State<SinifOdasiSayfasi> {
     return null;
   }
 
-  Widget _board() => TweenAnimationBuilder<double>(
-      tween: Tween(begin: .92, end: 1),
-      duration: const Duration(milliseconds: 900),
-      builder: (context, scale, child) =>
-          Transform.scale(scale: scale, child: child),
-      child: Container(
-          height: 82,
-          width: double.infinity,
-          decoration: BoxDecoration(
+  Widget _board() => LayoutBuilder(builder: (context, constraints) {
+        final compact = constraints.maxWidth < 600;
+        return TweenAnimationBuilder<double>(
+          tween: Tween<double>(begin: .92, end: 1),
+          duration: const Duration(milliseconds: 900),
+          builder: (context, double scale, Widget? child) =>
+              Transform.scale(scale: scale, child: child),
+          child: Container(
+            height: compact ? 68 : 82,
+            width: double.infinity,
+            alignment: Alignment.center,
+            padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 24),
+            decoration: BoxDecoration(
               color: const Color(0xFF143D36),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: const Color(0xFFC49A5B), width: 5),
               boxShadow: const [
                 BoxShadow(
-                    color: Colors.black54, blurRadius: 12, offset: Offset(0, 6))
-              ]),
-          child: const Center(
-              child: Text('DERS ÇALIŞMASI',
-                  style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 2)))));
+                  color: Colors.black54,
+                  blurRadius: 12,
+                  offset: Offset(0, 6),
+                )
+              ],
+            ),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                '${widget.className} Sınıfı',
+                maxLines: 1,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: compact ? 16 : 20,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: compact ? 1 : 2,
+                ),
+              ),
+            ),
+          ),
+        );
+      });
 
   Widget _seat(Map<String, dynamic> seat, int index,
       DocumentSnapshot<Map<String, dynamic>> table) {
     final occupied = seat['userId']?.toString().isNotEmpty == true;
     final uid = seat['userId']?.toString();
     final photo = seat['photoBase64']?.toString();
-    return InkWell(
+    final name = seat['userName']?.toString() ?? '';
+    return Expanded(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
         onTap: occupied && uid != widget.user?.uid
             ? null
             : () async {
-                if (occupied)
+                if (occupied) {
                   await _leaveSeat();
-                else
+                } else {
                   await _sit(table, index);
+                }
               },
         child: AnimatedContainer(
-            duration: const Duration(milliseconds: 450),
-            decoration: BoxDecoration(
-                color:
-                    occupied ? _gold.withOpacity(.12) : const Color(0xFF20283D),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: occupied ? _gold : Colors.white10)),
-            child:
-                Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          height: double.infinity,
+          duration: const Duration(milliseconds: 420),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+          decoration: BoxDecoration(
+            color: occupied
+                ? const Color(0xFF123D66)
+                : const Color(0xFF20283D).withOpacity(.72),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: occupied ? const Color(0xFF47A8FF) : Colors.white10,
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
               CircleAvatar(
-                  radius: 16,
-                  backgroundColor: occupied ? _gold : Colors.grey.shade700,
-                  backgroundImage: photo?.isNotEmpty == true
-                      ? MemoryImage(base64Decode(photo!))
-                      : null,
-                  child: photo?.isNotEmpty != true
-                      ? Icon(occupied ? Icons.person : Icons.event_seat,
-                          size: 16, color: Colors.black)
-                      : null),
-              const SizedBox(height: 3),
-              Text(
-                  occupied
-                      ? (seat['userName']?.toString() ?? 'Öğrenci')
-                      : 'OTUR',
+                radius: occupied ? 15 : 13,
+                backgroundColor: occupied ? _gold : const Color(0xFF52616F),
+                backgroundImage: occupied && photo?.isNotEmpty == true
+                    ? MemoryImage(base64Decode(photo!))
+                    : null,
+                child: occupied && photo?.isNotEmpty != true
+                    ? const Icon(Icons.person, size: 16, color: Colors.black)
+                    : !occupied
+                        ? const Icon(Icons.event_seat,
+                            size: 15, color: Colors.white70)
+                        : null,
+              ),
+              const SizedBox(height: 4),
+              Container(
+                width: double.infinity,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: occupied
+                      ? const Color(0xFF1769AA)
+                      : const Color(0xFF1D8FDB),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x33000000),
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Text(
+                  occupied && name.isNotEmpty
+                      ? name
+                      : (occupied ? 'OTURAN' : 'OTUR'),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 9,
-                      color: occupied ? Colors.white : _cyan,
-                      fontWeight: FontWeight.bold))
-            ])));
+                  style: const TextStyle(
+                    fontSize: 8,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _tableCard(DocumentSnapshot<Map<String, dynamic>> table) {
@@ -725,36 +850,86 @@ class _SinifOdasiSayfasiState extends State<SinifOdasiSayfasi> {
     final occupied =
         seats.where((s) => s['userId']?.toString().isNotEmpty == true).length;
     return Container(
-        decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            gradient: const LinearGradient(
-                colors: [Color(0xFF171E4F), Color(0xFF101536)]),
-            border: Border.all(
-                color: occupied > 0
-                    ? _gold.withOpacity(.55)
-                    : const Color(0xFF252B57))),
-        child: Column(children: [
+      clipBehavior: Clip.antiAlias,
+      padding: const EdgeInsets.fromLTRB(8, 7, 8, 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFF171E4F), Color(0xFF101536)],
+        ),
+        border: Border.all(
+          color:
+              occupied > 0 ? _gold.withOpacity(.55) : const Color(0xFF252B57),
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22000000),
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          const SizedBox(height: 2),
+          Text(
+            'MASA ${table.data()?['masaNo'] ?? 1}',
+            style: const TextStyle(
+              color: _gold,
+              fontSize: 9,
+              fontWeight: FontWeight.w800,
+              letterSpacing: .5,
+            ),
+          ),
           const SizedBox(height: 6),
-          Text('MASA ${table.data()?['masaNo'] ?? 1}',
-              style: const TextStyle(
-                  color: _gold, fontSize: 9, fontWeight: FontWeight.bold)),
-          Icon(Icons.lightbulb_rounded,
-              size: 27, color: occupied > 0 ? _gold : const Color(0xFF555A70)),
-          Container(
-              margin: const EdgeInsets.symmetric(horizontal: 6),
-              height: 42,
-              child: Row(children: [
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 420),
+            padding: const EdgeInsets.all(5),
+            decoration: occupied > 0
+                ? BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: _gold.withOpacity(.28),
+                        blurRadius: 16,
+                        spreadRadius: 3,
+                      ),
+                    ],
+                  )
+                : null,
+            child: Icon(
+              Icons.lightbulb_rounded,
+              size: 30,
+              color: occupied > 0 ? _gold : const Color(0xFF4B557A),
+            ),
+          ),
+          const Spacer(),
+          SizedBox(
+            height: 74,
+            width: double.infinity,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
                 _seat(seats[0], 0, table),
-                const SizedBox(width: 4),
-                _seat(seats[1], 1, table)
-              ])),
+                const SizedBox(width: 5),
+                _seat(seats[1], 1, table),
+              ],
+            ),
+          ),
           Container(
-              height: 24,
-              margin: const EdgeInsets.fromLTRB(8, 5, 8, 7),
-              decoration: const BoxDecoration(
-                  color: Color(0xFF503B24),
-                  borderRadius: BorderRadius.all(Radius.circular(5))))
-        ]));
+            height: 20,
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 7),
+            decoration: const BoxDecoration(
+              color: Color(0xFF503B24),
+              borderRadius: BorderRadius.all(Radius.circular(5)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _privateChat(String tableId) => _PrivateTableChat(
@@ -944,18 +1119,135 @@ class _SinifOdasiSayfasiState extends State<SinifOdasiSayfasi> {
             });
       });
 
+  Widget _floatingChatPanel(String? myTable, double width, double height) {
+    return AnimatedPositioned(
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      right: 12,
+      bottom: 78,
+      child: AnimatedScale(
+        scale: _chatOpen ? 1 : 0,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutBack,
+        alignment: Alignment.bottomRight,
+        child: Material(
+          color: Colors.transparent,
+          child: Container(
+            width: width,
+            height: height,
+            decoration: BoxDecoration(
+              color: const Color(0xFF111827).withOpacity(.98),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: _cyan.withOpacity(.22)),
+              boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withOpacity(.45),
+                    blurRadius: 24,
+                    offset: const Offset(0, 10)),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: DefaultTabController(
+              length: 3,
+              child: Column(children: [
+                Container(
+                  height: 52,
+                  padding: const EdgeInsets.only(left: 12),
+                  decoration: const BoxDecoration(color: Color(0xFF151E32)),
+                  child: Row(children: [
+                    const Icon(Icons.forum_rounded, color: _cyan, size: 20),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                        child: Text('Sınıf Chat',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold))),
+                    IconButton(
+                        onPressed: () => setState(() => _chatOpen = false),
+                        tooltip: 'Kapat',
+                        icon: const Icon(Icons.close_rounded,
+                            color: Colors.white70, size: 20)),
+                  ]),
+                ),
+                const TabBar(tabs: [
+                  Tab(text: 'Ortak'),
+                  Tab(text: 'Masa'),
+                  Tab(text: 'Üyeler')
+                ]),
+                Expanded(
+                    child: TabBarView(children: [
+                  _generalChat(),
+                  myTable != null
+                      ? _privateChat(myTable)
+                      : const Center(
+                          child: Padding(
+                              padding: EdgeInsets.all(20),
+                              child: Text(
+                                  'Özel masa chat için aynı masada bir sandalye seç.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: Colors.grey)))),
+                  _members(),
+                ])),
+              ]),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF090D1F),
       appBar: AppBar(
         backgroundColor: const Color(0xFF111827),
-        title: Text(widget.className),
+        centerTitle: false,
+        title: Text(
+          widget.className.trim().isNotEmpty
+              ? widget.className.trim()
+              : 'Çalışma Odası',
+          style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
         actions: [
-          IconButton(
-              onPressed: _leaveSeat,
-              tooltip: 'Masadan kalk',
-              icon: const Icon(Icons.event_seat_outlined, color: _gold))
+          StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+            stream: FirebaseFirestore.instance
+                .collection('siniflar')
+                .doc(widget.classId)
+                .collection('presence')
+                .snapshots(),
+            builder: (context, snapshot) {
+              var onlineCount = 0;
+              for (final doc in snapshot.data?.docs ?? const []) {
+                if (doc.data()['online'] == true) onlineCount++;
+              }
+              return Container(
+                margin: const EdgeInsets.only(right: 12, top: 10, bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF5B1B28),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                      color: const Color(0xFFE55A75).withOpacity(.5)),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.people_alt_rounded,
+                        size: 13, color: Color(0xFFFF8A9D)),
+                    const SizedBox(width: 5),
+                    Text('$onlineCount çevrimiçi',
+                        style: const TextStyle(
+                            color: Color(0xFFFFA5B3),
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              );
+            },
+          ),
         ],
       ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -963,87 +1255,77 @@ class _SinifOdasiSayfasiState extends State<SinifOdasiSayfasi> {
         builder: (context, tableSnapshot) {
           if (!tableSnapshot.hasData)
             return const Center(child: CircularProgressIndicator());
+          final docs = tableSnapshot.data!.docs.take(8).toList();
           final myTable = _mySeatTable(tableSnapshot.data!);
-          return Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1180),
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                    horizontal:
-                        MediaQuery.sizeOf(context).width >= 700 ? 32 : 8),
-                child: LayoutBuilder(builder: (context, constraints) {
-                  final wide = constraints.maxWidth >= 760;
-                  final room = Column(children: [
-                    _board(),
-                    const SizedBox(height: 10),
-                    Expanded(
-                        child: GridView.builder(
-                      padding: const EdgeInsets.fromLTRB(0, 8, 0, 8),
-                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: constraints.maxWidth >= 900 ? 4 : 2,
-                        crossAxisSpacing: 10,
-                        mainAxisSpacing: 10,
-                        childAspectRatio:
-                            constraints.maxWidth < 560 ? .82 : .92,
-                      ),
-                      itemCount: tableSnapshot.data!.docs.length,
-                      itemBuilder: (context, index) =>
-                          _tableCard(tableSnapshot.data!.docs[index]),
-                    )),
-                  ]);
-                  if (!wide) {
-                    return DefaultTabController(
-                        length: 3,
-                        child: Column(children: [
-                          const TabBar(tabs: [
-                            Tab(text: 'Oda'),
-                            Tab(text: 'Chat'),
-                            Tab(text: 'Üyeler')
-                          ]),
-                          Expanded(
-                              child: TabBarView(children: [
-                            room,
-                            _generalChat(),
-                            _members()
-                          ])),
-                        ]));
-                  }
-                  return Row(children: [
-                    Expanded(flex: 6, child: room),
-                    const SizedBox(width: 12),
-                    Expanded(
-                        flex: 4,
-                        child: DefaultTabController(
-                            length: 3,
-                            child: Container(
-                              decoration: BoxDecoration(
-                                  color: const Color(0xFF111827),
-                                  borderRadius: BorderRadius.circular(16)),
-                              child: Column(children: [
-                                const TabBar(tabs: [
-                                  Tab(text: 'Chat'),
-                                  Tab(text: 'Masa'),
-                                  Tab(text: 'Üyeler')
-                                ]),
-                                Expanded(
-                                    child: TabBarView(children: [
-                                  _generalChat(),
-                                  myTable != null
-                                      ? _privateChat(myTable)
-                                      : const Center(
-                                          child: Text(
-                                              'Özel masa chat için yan yana otur.',
-                                              style: TextStyle(
-                                                  color: Colors.grey))),
-                                  _members(),
-                                ])),
-                              ]),
-                            ))),
-                  ]);
-                }),
+          return LayoutBuilder(builder: (context, constraints) {
+            final size = MediaQuery.sizeOf(context);
+            final narrow = constraints.maxWidth < 600;
+            final columns = narrow ? 2 : 4;
+            final horizontalPadding = narrow ? 10.0 : 32.0;
+            final cardHeight = narrow ? 190.0 : 220.0;
+            final chatWidth = narrow
+                ? (size.width - 24) < 360
+                    ? size.width - 24
+                    : 360.0
+                : 390.0;
+            final availableChatHeight = size.height - 170;
+            final desiredChatHeight = size.height * .58;
+            final chatHeight = narrow
+                ? (desiredChatHeight < availableChatHeight
+                        ? desiredChatHeight
+                        : availableChatHeight)
+                    .clamp(220.0, size.height)
+                    .toDouble()
+                : (520.0 < availableChatHeight ? 520.0 : availableChatHeight)
+                    .clamp(220.0, size.height)
+                    .toDouble();
+            return Stack(children: [
+              Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1180),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                        horizontalPadding, 12, horizontalPadding, 12),
+                    child: Column(
+                      children: [
+                        _board(),
+                        const SizedBox(height: 12),
+                        Expanded(
+                          child: GridView.builder(
+                            padding: EdgeInsets.only(bottom: narrow ? 78 : 24),
+                            physics: const BouncingScrollPhysics(),
+                            gridDelegate:
+                                SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: columns,
+                              crossAxisSpacing: narrow ? 8 : 12,
+                              mainAxisSpacing: narrow ? 8 : 12,
+                              mainAxisExtent: cardHeight,
+                            ),
+                            itemCount: docs.length,
+                            itemBuilder: (context, index) =>
+                                _tableCard(docs[index]),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
-          );
+              _floatingChatPanel(myTable, chatWidth, chatHeight),
+              Positioned(
+                  right: 16,
+                  bottom: 16,
+                  child: FloatingActionButton(
+                    heroTag: 'classFloatingChat',
+                    backgroundColor: _cyan,
+                    foregroundColor: Colors.black,
+                    onPressed: () => setState(() => _chatOpen = !_chatOpen),
+                    child: Icon(_chatOpen
+                        ? Icons.close_rounded
+                        : Icons.chat_bubble_rounded),
+                  )),
+            ]);
+          });
         },
       ),
     );
@@ -1078,13 +1360,21 @@ class _PrivateTableChatState extends State<_PrivateTableChat> {
   Future<void> _send() async {
     final text = _message.text.trim();
     if (text.isEmpty || widget.user == null) return;
-    await _messages.add({
-      'senderId': widget.user!.uid,
-      'senderName': widget.userName,
-      'text': text,
-      'createdAt': Timestamp.now(),
-    });
-    _message.clear();
+    try {
+      await _messages.add({
+        'senderId': widget.user!.uid,
+        'senderName': widget.userName,
+        'text': text,
+        'createdAt': Timestamp.now(),
+      });
+      _message.clear();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Özel mesaj gönderilemedi. Bağlantınızı kontrol edin.'),
+        backgroundColor: Color(0xFFFF334B),
+      ));
+    }
   }
 
   @override

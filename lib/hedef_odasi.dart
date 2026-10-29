@@ -31,6 +31,7 @@ class HedefOdasiSayfasi extends StatefulWidget {
 
 class _HedefOdasiSayfasiState extends State<HedefOdasiSayfasi>
     with WidgetsBindingObserver {
+  static const bool _maintenanceMode = true;
   static const _collection = 'target_rooms';
   static const _subjects = [
     'Matematik',
@@ -56,7 +57,7 @@ class _HedefOdasiSayfasiState extends State<HedefOdasiSayfasi>
     _clock = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
-    if (widget.user != null) {
+    if (!_maintenanceMode && widget.user != null) {
       _prepareTables();
       _findMySeat();
     }
@@ -216,6 +217,57 @@ class _HedefOdasiSayfasiState extends State<HedefOdasiSayfasi>
     return _safeString(seat['occupiedBy']) != null;
   }
 
+  Future<void> _releaseOtherSeats(String uid) async {
+    final firestore = FirebaseFirestore.instance;
+    final batch = firestore.batch();
+
+    final targetTables = await firestore.collection(_collection).get();
+    for (final doc in targetTables.docs) {
+      final rawSeats = doc.data()['seats'];
+      if (rawSeats is! Iterable) continue;
+      final seats = rawSeats
+          .map((e) =>
+              e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{})
+          .toList();
+      var changed = false;
+      for (var i = 0; i < seats.length; i++) {
+        if (seats[i]['occupiedBy']?.toString() == uid) {
+          seats[i] = <String, dynamic>{};
+          changed = true;
+        }
+      }
+      if (changed) {
+        batch.set(
+            doc.reference,
+            {
+              'seats': seats,
+              'isOccupied': seats.any((seat) => seat['occupiedBy'] != null),
+              'occupiedBy': null,
+            },
+            SetOptions(merge: true));
+      }
+    }
+
+    final classTables = await firestore.collectionGroup('tables').get();
+    for (final doc in classTables.docs) {
+      final rawSeats = doc.data()['seats'];
+      if (rawSeats is! Iterable) continue;
+      final seats = rawSeats
+          .map((e) =>
+              e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{})
+          .toList();
+      var changed = false;
+      for (var i = 0; i < seats.length; i++) {
+        if (seats[i]['userId']?.toString() == uid) {
+          seats[i] = <String, dynamic>{};
+          changed = true;
+        }
+      }
+      if (changed) batch.update(doc.reference, {'seats': seats});
+    }
+    await batch.commit();
+  }
+
   Future<void> _sit(String tableId, int seatIndex) async {
     if (seatIndex != 0 && seatIndex != 1) return;
     final safeTableId = _safeString(tableId);
@@ -226,6 +278,8 @@ class _HedefOdasiSayfasiState extends State<HedefOdasiSayfasi>
       widget.onLogin();
       return;
     }
+
+    await _releaseOtherSeats(uid);
 
     final subject = await showModalBottomSheet<String>(
       context: context,
@@ -276,9 +330,6 @@ class _HedefOdasiSayfasiState extends State<HedefOdasiSayfasi>
 
     final firestore = FirebaseFirestore.instance;
     try {
-      if (_myTable != null && _myTable != tableId) {
-        await _clearChat(_myTable!);
-      }
       final all = await firestore.collection(_collection).get();
       final batch = firestore.batch();
       for (final doc in all.docs) {
@@ -367,7 +418,6 @@ class _HedefOdasiSayfasiState extends State<HedefOdasiSayfasi>
     final index = seatIndex ?? _mySeat;
     if (uid == null || target == null || index == null) return;
 
-    await _clearChat(target);
     final ref = FirebaseFirestore.instance.collection(_collection).doc(target);
     await FirebaseFirestore.instance.runTransaction((transaction) async {
       final snap = await transaction.get(ref);
@@ -457,6 +507,58 @@ class _HedefOdasiSayfasiState extends State<HedefOdasiSayfasi>
 
   @override
   Widget build(BuildContext context) {
+    if (_maintenanceMode) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF030712),
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          title: const Text('Hedef Odası'),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 88,
+                  height: 88,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF334B).withOpacity(.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                        color: const Color(0xFFFF334B).withOpacity(.5),
+                        width: 2),
+                  ),
+                  child: const Icon(Icons.build_circle_rounded,
+                      size: 46, color: Color(0xFFFF334B)),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  'BAKIMDA',
+                  style: TextStyle(
+                    color: Color(0xFFFF334B),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.8,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Hedef Odası şu anda bakımdadır, yakında tekrar açılacaktır!',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      height: 1.4,
+                      fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
     if (!widget.isPremium) {
       return Scaffold(
           backgroundColor: const Color(0xFF030712),
@@ -518,6 +620,16 @@ class _HedefOdasiSayfasiState extends State<HedefOdasiSayfasi>
           const SizedBox(width: 8),
         ],
       ),
+      floatingActionButton: _myTable == null
+          ? null
+          : FloatingActionButton(
+              heroTag: 'targetRoomChat',
+              backgroundColor: const Color(0xFF00F0FF),
+              foregroundColor: Colors.black,
+              tooltip: 'Masa Sohbeti',
+              onPressed: () => _openChat(_myTable!),
+              child: const Icon(Icons.chat_bubble_rounded),
+            ),
       body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
         stream: FirebaseFirestore.instance
             .collection(_collection)

@@ -15,6 +15,11 @@ service cloud.firestore {
       allow create: if signedIn() && request.auth.uid == uid;
       allow update: if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow delete: if isAdmin();
+
+      match /{collection}/{document=**} {
+        allow read: if signedIn() && request.auth.uid == uid;
+        allow create, update, delete: if signedIn() && request.auth.uid == uid;
+      }
     }
 
     match /siniflar/{classId} {

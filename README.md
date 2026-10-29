@@ -2,6 +2,23 @@
 
 A new Flutter project.
 
+## Gemini API ayari
+
+Proje kokunde bulunan `gemini.local.json` dosyasina Gemini API anahtarini tanimlayin:
+
+```json
+{
+  "GEMINI_API_KEY": "API_ANAHTARINIZ"
+}
+```
+
+VS Code'da **Run and Debug** panelinden **YKS Hane (Gemini)** yapilandirmasini secin.
+`gemini.local.json` Git'e eklenmez. Komut satiri ile calistirmak icin:
+
+```powershell
+flutter run --dart-define-from-file=gemini.local.json
+```
+
 ## Getting Started
 
 This project is a starting point for a Flutter application.

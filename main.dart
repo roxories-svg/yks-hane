@@ -2876,9 +2876,9 @@ class _DersSorulariSayfasiState extends State<DersSorulariSayfasi> {
     );
 
     try {
-      const apiKey = "AQ.Ab8RN6KPclBuFtt8C7F1lo71dN5kR7xKs2_5_JPC0w8L2coSmQ";
+      const apiKey = String.fromEnvironment('GEMINI_API_KEY');
       final url = Uri.parse(
-          'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$apiKey');
+          'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=$apiKey');
 
       final response = await http.post(
         url,
